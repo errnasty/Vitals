@@ -1,0 +1,83 @@
+:root {
+  --bg: #fbfbfa;
+  --fg: #1a1a19;
+  --muted: #74746f;
+  --line: #e4e4e0;
+  --ok: #2f7d55;
+  --bad: #b23c2e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131313;
+    --fg: #ececea;
+    --muted: #8d8d87;
+    --line: #2a2a29;
+    --ok: #6bbd8c;
+    --bad: #e0705f;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 6rem 1.5rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.25rem;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.rows {
+  margin-top: 2.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.875rem;
+}
+
+.row dt {
+  color: var(--muted);
+  margin: 0;
+}
+
+.row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.bad {
+  color: var(--bad);
+}

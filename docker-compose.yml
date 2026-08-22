@@ -1,0 +1,74 @@
+# LOCAL DEVELOPMENT ONLY. Production is Railway (api/web/sync) + Supabase (Postgres).
+# Kept deliberately close to the deployed shape: same Dockerfiles, same start commands,
+# same migration step — so "works locally" means something.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: vitals
+      POSTGRES_PASSWORD: vitals
+      POSTGRES_DB: vitals
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vitals -d vitals"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build:
+      context: ./backend
+    command: alembic upgrade head
+    environment:
+      DATABASE_URL: postgresql+asyncpg://vitals:vitals@db:5432/vitals
+      ENVIRONMENT: local
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ./backend
+    command: uvicorn vitals.api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_URL: postgresql+asyncpg://vitals:vitals@db:5432/vitals
+      ENVIRONMENT: local
+      CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # The sync job is a one-shot container, exactly as it is on Railway cron. Run it with
+  # `docker compose run --rm sync` rather than leaving it up.
+  sync:
+    build:
+      context: ./backend
+    command: vitals sync
+    environment:
+      DATABASE_URL: postgresql+asyncpg://vitals:vitals@db:5432/vitals
+      ENVIRONMENT: local
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    profiles: ["jobs"]
+
+  web:
+    build:
+      context: ./frontend
+    environment:
+      API_URL: http://api:8000
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

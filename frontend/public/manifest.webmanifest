@@ -1,0 +1,10 @@
+{
+  "name": "Vitals",
+  "short_name": "Vitals",
+  "description": "Analytical all-in-one health platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbfbfa",
+  "theme_color": "#fbfbfa",
+  "icons": []
+}

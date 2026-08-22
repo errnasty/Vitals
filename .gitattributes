@@ -1,0 +1,10 @@
+# Normalize to LF in the repo and on checkout. The Docker images are Linux, so a CRLF
+# checkout on Windows would otherwise ship shell scripts and entrypoints that fail.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.fit binary
+uv.lock -diff
+package-lock.json -diff linguist-generated

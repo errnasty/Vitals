@@ -9,15 +9,21 @@ every number; the model only selects, prioritises, explains and personalises.
 
 ## Status
 
-**Phase 0 — deployment skeleton.** The pipeline is deployed and provably wired up
-(web → api → Supabase) before any feature is built, because cloud integration problems are
-cheap in week one and expensive in week ten.
+**Phase 2 — the Garmin connector.** The riskiest part, and the reason everything
+downstream depends only on bronze: an immutable, hash-deduplicated store of verbatim
+provider JSON. Authentication happens once a year on your laptop and never from the
+cloud; tokens live encrypted in the database and survive every redeploy; every request
+passes a rate governor with a persisted cooldown. A daily sync costs ~29 requests and
+seven years of history ~320. See [docs/garmin.md](docs/garmin.md).
+
+Phases 0-2 are complete in code and covered by CI. Still pending the accounts they
+depend on: the Railway + Supabase deploy, and a real `vitals garmin login`.
 
 | Phase | Deliverable | State |
 |---|---|---|
-| 0 | Scaffold + deploy skeleton, Alembic, config, CI | **in progress** |
-| 1 | Supabase Auth + JWT middleware | |
-| 2 | Garmin connector: local SSO login, encrypted DB token store, rate governor, backfill | |
+| 0 | Scaffold + deploy skeleton, Alembic, config, CI | **code complete** |
+| 1 | Supabase Auth + JWT middleware | **code complete** |
+| 2 | Garmin connector: local SSO login, encrypted DB token store, rate governor, backfill | **code complete** |
 | 3 | Normalizers → canonical silver model, FIT parsing | |
 | 4 | Analytics engine (training load, recovery, sleep, body, longevity) | |
 | 5 | Vitals Score: pillars, coverage, calibration, contributions waterfall | |
@@ -59,16 +65,18 @@ backend/          FastAPI + SQLAlchemy 2.0 + Alembic, uv-managed
   src/vitals/
     config.py     one settings object for every service
     db/           engine, session, models
+    auth/         JWT verification, JWKS cache, allowlist, user provisioning
+    security/     credential vault (encrypted at rest, provider-agnostic)
     api/          routers, dependencies
     workers/      jobs invoked by the Railway cron service
-    cli.py        vitals doctor | sync | (later) auth, backfill, score, coach
-    sources/      garmin (pull) · healthkit (push)      — phase 2, 10
-    ingest/       raw store, pipeline, source resolver   — phase 3
+    cli.py        vitals doctor | auth | garmin | sync | backfill | (later) score, coach
+    sources/      garmin: client, rate governor, endpoint catalog, plan · healthkit — phase 10
+    ingest/       raw store (bronze), pipeline · source resolver — phase 3
     analytics/    training load, recovery, sleep, body, longevity, score
     ai/           digest, OpenRouter client, grounding, coach
   alembic/        migrations
 frontend/         Next.js App Router (PWA)
-docs/             deployment runbook, local development
+docs/             deployment runbook, local development, auth
 docker-compose.yml  local dev only
 ```
 
@@ -79,12 +87,27 @@ cd backend && uv sync --all-groups
 uv run alembic upgrade head
 uv run vitals doctor
 uv run uvicorn vitals.api.main:app --reload
+
+# no Supabase project needed to work on the API:
+export SUPABASE_JWT_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+export VITALS_ALLOWED_EMAILS=you@example.com
+curl -H "Authorization: Bearer $(uv run vitals auth token --email you@example.com)" \
+     localhost:8000/auth/me
 ```
 
-See [docs/local-development.md](docs/local-development.md) and
-[docs/deployment.md](docs/deployment.md).
+See [docs/local-development.md](docs/local-development.md),
+[docs/auth.md](docs/auth.md) and [docs/deployment.md](docs/deployment.md).
 
 ## Notes
+
+Garmin history lands in `raw_payload` verbatim and is never re-scraped: everything in
+silver and gold is re-derivable from it, so a normalizer bug is a recompute rather than
+data loss. Re-fetching an unchanged week writes nothing; a day Garmin revised lands
+beside the original.
+
+Health data sits behind two independent gates: Supabase sign-ups are disabled, and
+`VITALS_ALLOWED_EMAILS` is enforced on every request. The API will not start outside
+local development unless both a verification method and an allowlist are configured.
 
 Garmin data is read through the unofficial Connect API (`python-garminconnect`): the
 official Health API does not support personal use, and commercial aggregators are B2B

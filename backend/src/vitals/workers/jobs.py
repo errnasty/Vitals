@@ -3,48 +3,39 @@
 Deliberately a separate entrypoint from the API: the sync job needs nothing but a
 database URL and the encryption key, so it can be relocated to a home machine
 unchanged if Garmin ever blocks datacenter IPs.
+
+Railway's cron skips a tick when the previous run is still going rather than stacking
+runs on top of each other, which is exactly the semantic a rate-limited scraper wants —
+and the reason there is no in-process scheduler anywhere in this codebase.
 """
 
 from __future__ import annotations
 
-import uuid
-from datetime import UTC, datetime
+from datetime import date
 
-from sqlalchemy import select
-
-from vitals.db.models import SyncRun
 from vitals.db.session import dispose_engine, get_sessionmaker
+from vitals.ingest.pipeline import run_backfill, run_incremental
 from vitals.logging import get_logger
+from vitals.sources.base import SyncOutcome
 
 log = get_logger(__name__)
 
 
-async def run_sync(source: str = "garmin") -> uuid.UUID:
-    """Phase 0 placeholder: opens a sync_run, closes it, proves the write path works.
+async def run_sync(
+    source: str = "garmin", *, days: int = 7, email: str | None = None
+) -> SyncOutcome:
+    """Incremental sync. The trailing window catches Garmin's retroactive revisions."""
+    if source != "garmin":
+        raise ValueError(f"unknown source {source!r}")
 
-    Phase 2 replaces the body with the governed Garmin fetchers; the bookkeeping
-    around it is already what it will need.
-    """
     async with get_sessionmaker()() as session:
-        run = SyncRun(source=source, status="running")
-        session.add(run)
-        await session.commit()
-        log.info("sync.started", run_id=str(run.id), source=source)
-
-        run.status = "success"
-        run.finished_at = datetime.now(UTC)
-        run.requests_made = 0
-        await session.commit()
-        log.info("sync.finished", run_id=str(run.id), source=source, status=run.status)
-        return run.id
+        return await run_incremental(session, email=email, days=days)
 
 
-async def last_sync(source: str | None = None) -> SyncRun | None:
+async def run_history(*, start: date, end: date, email: str | None = None) -> SyncOutcome:
+    """One-off history pull. Manual by design — never put this on a cron."""
     async with get_sessionmaker()() as session:
-        stmt = select(SyncRun).order_by(SyncRun.started_at.desc()).limit(1)
-        if source:
-            stmt = stmt.where(SyncRun.source == source)
-        return (await session.execute(stmt)).scalar_one_or_none()
+        return await run_backfill(session, start=start, end=end, email=email)
 
 
 async def shutdown() -> None:

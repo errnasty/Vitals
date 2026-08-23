@@ -40,6 +40,31 @@ curl -H "Authorization: Bearer $TOKEN" localhost:8000/auth/me
 Minting is refused outside `ENVIRONMENT=local`. For UI work, `VITALS_AUTH_DISABLED=true`
 turns auth off entirely — also local-only. See [auth.md](auth.md).
 
+## Garmin
+
+```bash
+vitals sync --dry-run            # the request plan, without touching Garmin
+vitals garmin status             # connection, tokens, how much history has landed
+```
+
+`--dry-run` needs no credentials, which makes the fetch plan and its request cost
+reviewable before anything is connected. Connecting for real is a local, once-a-year
+step — see [garmin.md](garmin.md).
+
+## Tests and Postgres
+
+The connector's storage tests need a real Postgres (JSONB, `ON CONFLICT`,
+`NULLS NOT DISTINCT`), and skip cleanly when there is none:
+
+```bash
+docker compose up -d db
+uv run pytest -q                 # creates and drops its own <database>_test
+```
+
+They never touch the database `DATABASE_URL` points at — the fixture derives a `_test`
+database and creates it if needed, so pointing `DATABASE_URL` at a real project is not
+one `pytest` away from losing it.
+
 ## Frontend
 
 ```bash

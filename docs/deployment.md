@@ -1,4 +1,4 @@
-# Deployment runbook — phases 0 and 1
+# Deployment runbook — phases 0 to 2
 
 Phase 0 deploys before the app does anything useful. Railway and Supabase integration
 problems are cheap to fix in week one and expensive in week ten.
@@ -111,7 +111,49 @@ Phase-1 exit criteria:
 - [ ] `railway run --service api vitals doctor` reports the JWKS key set and a non-empty
       allowlist
 
-## 4. The fallback worth knowing now
+## 4. Connecting Garmin
+
+Do this **from your own machine**, not from Railway, against the same `DATABASE_URL`:
+
+```bash
+export DATABASE_URL=<supabase session pooler URL>
+export VITALS_ENCRYPTION_KEY=<the same key Railway holds>
+vitals garmin login --email you@garmin-account     # password + MFA prompt
+vitals garmin test                                  # confirms the stored tokens work
+```
+
+Garmin's SSO sits behind Cloudflare, which is markedly harsher on datacenter IPs. The
+token lasts about a year and refreshes over the ordinary API, so this is the only time
+anything logs in — Railway never does. Full reasoning in [garmin.md](garmin.md).
+
+Then confirm the datacenter IP is tolerated **before** the cron depends on it:
+
+```bash
+railway run --service sync vitals garmin test
+railway run --service sync vitals sync --dry-run    # the plan, no requests
+```
+
+If that fails with a Cloudflare block, move only the `sync` service (section 5) — it
+needs nothing but `DATABASE_URL` and `VITALS_ENCRYPTION_KEY`.
+
+Backfill is a manual one-off, never a cron:
+
+```bash
+vitals backfill --start 2019-01-01 --dry-run        # ~320 requests for 7 years
+vitals backfill --start 2019-01-01                  # ~15 minutes, governed and jittered
+```
+
+Phase-2 exit criteria:
+
+- [ ] `vitals garmin login` stored tokens, and `vitals garmin status` shows `active`
+- [ ] `vitals garmin test` passes **from Railway**, not just locally
+- [ ] a redeploy followed by `vitals sync` still works — proving tokens survived the
+      ephemeral filesystem, which is the failure this design exists to prevent
+- [ ] backfill landed multi-year history: `vitals garmin status` reports the date range
+- [ ] a second `vitals sync` over the same window stores 0 new payloads
+- [ ] the `sync` cron ran on schedule and wrote a `sync_run` with `status=success`
+
+## 5. The fallback worth knowing now
 
 The `sync` service is deliberately location-independent: it needs only `DATABASE_URL`
 and `VITALS_ENCRYPTION_KEY`. If Garmin's Cloudflare layer ever blocks Railway's

@@ -1,4 +1,4 @@
-# Deployment runbook — phase 0
+# Deployment runbook — phases 0 and 1
 
 Phase 0 deploys before the app does anything useful. Railway and Supabase integration
 problems are cheap to fix in week one and expensive in week ten.
@@ -53,7 +53,12 @@ DATABASE_URL=<supabase session pooler URL, port 5432>
 ENVIRONMENT=production
 VITALS_ENCRYPTION_KEY=<fernet key>     # needed from phase 2
 SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_JWT_SECRET
+VITALS_ALLOWED_EMAILS=<your address>   # the api refuses to start without it
 ```
+
+`SUPABASE_URL` is what enables JWKS verification for a current project;
+`SUPABASE_JWT_SECRET` covers legacy HS256 projects. Setting both is fine — each token is
+verified by the path its own header selects. See [auth.md](auth.md).
 
 Service-specific:
 
@@ -96,6 +101,15 @@ Phase-0 exit criteria:
 - [ ] Supabase sign-ups are **disabled** with only your email allowlisted
 - [ ] `alembic upgrade head` ran against the session pooler, not 6543
 - [ ] `sync` cron ran once and wrote a `sync_run` row
+
+Phase-1 exit criteria:
+
+- [ ] `curl https://<api>/auth/me` without a token returns **401** `missing_credentials`
+- [ ] signing in through Supabase and presenting the access token returns **200** with
+      your `app_user` row
+- [ ] a token for any other address returns **403** `forbidden`
+- [ ] `railway run --service api vitals doctor` reports the JWKS key set and a non-empty
+      allowlist
 
 ## 4. The fallback worth knowing now
 

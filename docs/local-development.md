@@ -23,6 +23,23 @@ uv run pytest -q
 it prints redacted config, the Postgres version, whether pgvector is enabled, and
 whether the schema is at Alembic head.
 
+## Auth, with no Supabase project
+
+The auth layer is fully exercisable offline: `vitals auth token` mints a real JWT with
+the claims Supabase issues, verified by the same code path as a production token.
+
+```bash
+export SUPABASE_JWT_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+export VITALS_ALLOWED_EMAILS=you@example.com
+
+TOKEN=$(uv run vitals auth token --email you@example.com)
+uv run vitals auth verify "$TOKEN"
+curl -H "Authorization: Bearer $TOKEN" localhost:8000/auth/me
+```
+
+Minting is refused outside `ENVIRONMENT=local`. For UI work, `VITALS_AUTH_DISABLED=true`
+turns auth off entirely — also local-only. See [auth.md](auth.md).
+
 ## Frontend
 
 ```bash

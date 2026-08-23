@@ -9,14 +9,19 @@ every number; the model only selects, prioritises, explains and personalises.
 
 ## Status
 
-**Phase 0 — deployment skeleton.** The pipeline is deployed and provably wired up
-(web → api → Supabase) before any feature is built, because cloud integration problems are
-cheap in week one and expensive in week ten.
+**Phase 1 — authentication.** Every route below the health endpoints requires a Supabase
+JWT, verified locally on each request, and the API refuses to start unprotected outside
+local development. Verification is stateless, so the whole layer is built and tested
+before the Supabase project exists — including key rotation, outages and the
+algorithm-confusion attacks. See [docs/auth.md](docs/auth.md).
+
+Both phases below are complete in code and covered by CI; the Railway + Supabase deploy
+is pending the Supabase project.
 
 | Phase | Deliverable | State |
 |---|---|---|
-| 0 | Scaffold + deploy skeleton, Alembic, config, CI | **in progress** |
-| 1 | Supabase Auth + JWT middleware | |
+| 0 | Scaffold + deploy skeleton, Alembic, config, CI | **code complete** |
+| 1 | Supabase Auth + JWT middleware | **code complete** |
 | 2 | Garmin connector: local SSO login, encrypted DB token store, rate governor, backfill | |
 | 3 | Normalizers → canonical silver model, FIT parsing | |
 | 4 | Analytics engine (training load, recovery, sleep, body, longevity) | |
@@ -59,16 +64,17 @@ backend/          FastAPI + SQLAlchemy 2.0 + Alembic, uv-managed
   src/vitals/
     config.py     one settings object for every service
     db/           engine, session, models
+    auth/         JWT verification, JWKS cache, allowlist, user provisioning
     api/          routers, dependencies
     workers/      jobs invoked by the Railway cron service
-    cli.py        vitals doctor | sync | (later) auth, backfill, score, coach
+    cli.py        vitals doctor | sync | auth | (later) backfill, score, coach
     sources/      garmin (pull) · healthkit (push)      — phase 2, 10
     ingest/       raw store, pipeline, source resolver   — phase 3
     analytics/    training load, recovery, sleep, body, longevity, score
     ai/           digest, OpenRouter client, grounding, coach
   alembic/        migrations
 frontend/         Next.js App Router (PWA)
-docs/             deployment runbook, local development
+docs/             deployment runbook, local development, auth
 docker-compose.yml  local dev only
 ```
 
@@ -79,12 +85,22 @@ cd backend && uv sync --all-groups
 uv run alembic upgrade head
 uv run vitals doctor
 uv run uvicorn vitals.api.main:app --reload
+
+# no Supabase project needed to work on the API:
+export SUPABASE_JWT_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+export VITALS_ALLOWED_EMAILS=you@example.com
+curl -H "Authorization: Bearer $(uv run vitals auth token --email you@example.com)" \
+     localhost:8000/auth/me
 ```
 
-See [docs/local-development.md](docs/local-development.md) and
-[docs/deployment.md](docs/deployment.md).
+See [docs/local-development.md](docs/local-development.md),
+[docs/auth.md](docs/auth.md) and [docs/deployment.md](docs/deployment.md).
 
 ## Notes
+
+Health data sits behind two independent gates: Supabase sign-ups are disabled, and
+`VITALS_ALLOWED_EMAILS` is enforced on every request. The API will not start outside
+local development unless both a verification method and an allowlist are configured.
 
 Garmin data is read through the unofficial Connect API (`python-garminconnect`): the
 official Health API does not support personal use, and commercial aggregators are B2B

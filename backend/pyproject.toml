@@ -16,6 +16,7 @@ dependencies = [
     "typer>=0.15",
     "structlog>=24.4",
     "cryptography>=44.0",
+    "pyjwt[crypto]>=2.10",
 ]
 
 [project.scripts]
@@ -25,6 +26,7 @@ vitals = "vitals.cli:app"
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "aiosqlite>=0.20",
     "ruff>=0.8",
     "mypy>=1.13",
 ]

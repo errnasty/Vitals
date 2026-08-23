@@ -7,9 +7,14 @@ Phase 0 ships `doctor` and `sync`; later phases fill in `auth`, `backfill`,
 from __future__ import annotations
 
 import asyncio
+import sys
+import uuid
+from collections.abc import Callable
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
 import typer
 from sqlalchemy import text
 
@@ -19,6 +24,8 @@ from vitals.db.session import dispose_engine, get_sessionmaker
 from vitals.logging import configure_logging
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="Vitals control CLI")
+auth_app = typer.Typer(no_args_is_help=True, help="Authentication helpers (local development)")
+app.add_typer(auth_app, name="auth")
 
 OK = "PASS"
 BAD = "FAIL"
@@ -82,6 +89,10 @@ async def _doctor() -> int:
     )
 
     typer.echo("")
+    typer.echo("auth")
+    await _doctor_auth(settings, line)
+
+    typer.echo("")
     typer.echo("database")
     try:
         async with get_sessionmaker()() as session:
@@ -126,6 +137,121 @@ async def _doctor() -> int:
     typer.echo("")
     typer.echo("FAILED" if failures else "OK")
     return 1 if failures else 0
+
+
+async def _doctor_auth(settings: Any, line: Callable[..., None]) -> None:
+    """Report every way this deployment could be serving health data unprotected."""
+    methods = []
+    if settings.jwks_url:
+        methods.append("JWKS (asymmetric)")
+    if settings.supabase_jwt_secret:
+        methods.append("shared secret (HS256)")
+    line(
+        OK if methods else (WARN if settings.is_local else BAD),
+        "verification",
+        " + ".join(methods) if methods else "none configured - every request will 401",
+    )
+    line(OK, "issuer", settings.jwt_issuer)
+    if settings.supabase_jwt_secret and len(settings.supabase_jwt_secret.encode()) < 32:
+        # RFC 7518 §3.2: an HS256 key shorter than the hash output weakens the signature.
+        # Supabase's own secret is longer, so this almost always means a hand-typed value.
+        line(WARN, "secret length", "SUPABASE_JWT_SECRET is under 32 bytes")
+
+    if settings.allowed_emails:
+        line(OK, "allowlist", f"{len(settings.allowed_emails)} address(es)")
+    else:
+        line(
+            WARN if settings.is_local else BAD,
+            "allowlist",
+            "VITALS_ALLOWED_EMAILS is empty - any Supabase account would be accepted",
+        )
+
+    if settings.auth_disabled:
+        line(
+            WARN if settings.is_local else BAD,
+            "VITALS_AUTH_DISABLED",
+            "auth is switched off" + ("" if settings.is_local else " outside local"),
+        )
+
+    if settings.jwks_url:
+        # A real fetch, because "the URL looks right" is not the failure mode that
+        # bites: a paused project or a wrong ref returns a perfectly plausible 404.
+        try:
+            async with httpx.AsyncClient(timeout=settings.jwks_timeout_s) as client:
+                response = await client.get(settings.jwks_url)
+                response.raise_for_status()
+                keys = response.json().get("keys", [])
+            algs = sorted({k.get("alg", "?") for k in keys})
+            line(
+                OK if keys else BAD,
+                "jwks",
+                f"{len(keys)} key(s) [{', '.join(algs)}]" if keys else "endpoint returned no keys",
+            )
+        except Exception as exc:  # noqa: BLE001 - doctor reports, never raises
+            line(BAD, "jwks", f"{settings.jwks_url}: {type(exc).__name__}")
+
+
+@auth_app.command("token")
+def auth_token(
+    email: str = typer.Option(..., "--email", "-e", help="Address to mint the token for"),
+    hours: int = typer.Option(12, "--hours", "-h", help="Lifetime in hours"),
+    user_id: str | None = typer.Option(None, "--user-id", help="Override the derived user id"),
+) -> None:
+    """Mint a local Supabase-shaped access token (local environment only)."""
+    from vitals.auth.dev import mint_dev_token
+
+    settings = get_settings()
+    try:
+        token = mint_dev_token(
+            settings,
+            email=email,
+            user_id=uuid.UUID(user_id) if user_id else None,
+            ttl=timedelta(hours=hours),
+        )
+    except (RuntimeError, ValueError) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+    if settings.allowed_emails and email.strip().lower() not in settings.allowed_emails:
+        typer.secho(
+            f"warning: {email} is not in VITALS_ALLOWED_EMAILS; requests will be rejected with 403",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+    typer.echo(token)
+
+
+@auth_app.command("verify")
+def auth_verify(
+    token: str | None = typer.Argument(None, help="Token to verify; omit to read stdin"),
+) -> None:
+    """Verify a token exactly as the API would, and print what it proves."""
+    from vitals.api.deps import get_verifier
+    from vitals.auth.errors import AuthError
+    from vitals.auth.policy import check_allowed
+
+    raw = (token or sys.stdin.read()).strip()
+    if not raw:
+        typer.secho("no token supplied", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1)
+
+    async def _verify() -> int:
+        try:
+            principal = await get_verifier().verify(raw)
+            check_allowed(get_settings(), principal)
+        except AuthError as exc:
+            typer.secho(f"[{BAD}] {exc.code}: {exc.detail}", fg=typer.colors.RED)
+            return 1
+        typer.echo(f"[{OK}] {principal.email or '(no email)'}")
+        typer.echo(f"  user_id   {principal.user_id}")
+        typer.echo(f"  role      {principal.role}")
+        typer.echo(f"  issued    {principal.issued_at.isoformat()}")
+        typer.echo(f"  expires   {principal.expires_at.isoformat()}")
+        typer.echo(f"  assurance {principal.assurance_level or '-'}")
+        return 0
+
+    configure_logging()
+    raise typer.Exit(asyncio.run(_verify()))
 
 
 @app.command()

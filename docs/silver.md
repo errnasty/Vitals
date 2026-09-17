@@ -30,6 +30,11 @@ vitals normalize --since 2026-01-01   # one window, after fixing a normalizer
 vitals normalize --endpoints sleep_detail --dry-run
 ```
 
+`vitals sync` runs it automatically over the window it just fetched, so the Railway
+cron keeps silver current without a second scheduled job. `--no-normalize` skips it.
+A normalizer that raises is logged and swallowed rather than failing the sync: bronze
+is already written by then, and it is the copy that cannot be re-fetched.
+
 ## The tables
 
 | Table | Grain | Holds |

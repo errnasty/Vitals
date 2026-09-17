@@ -342,8 +342,11 @@ def sync(
     days: int = typer.Option(7, "--days", help="Trailing window; catches Garmin's revisions"),
     email: str | None = typer.Option(None, "--email", help="Account to sync, if several exist"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the request plan, fetch nothing"),
+    normalize: bool = typer.Option(
+        True, "--normalize/--no-normalize", help="Rebuild silver over the same window afterwards"
+    ),
 ) -> None:
-    """Run an incremental sync. Invoked by the Railway `sync` cron service."""
+    """Run an incremental sync, then rebuild silver. Invoked by the Railway cron."""
     configure_logging()
     if source != "garmin":
         typer.secho(f"unknown source {source!r}", fg=typer.colors.RED, err=True)
@@ -360,7 +363,7 @@ def sync(
 
     async def _run() -> Any:
         try:
-            return await run_sync(source=source, days=days, email=email)
+            return await run_sync(source=source, days=days, email=email, normalize=normalize)
         finally:
             await shutdown()
 

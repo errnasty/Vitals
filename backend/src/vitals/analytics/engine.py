@@ -25,6 +25,7 @@ from vitals.analytics import body, longevity, recovery, sleep, training
 from vitals.analytics import canonical as d
 from vitals.analytics.model import Derived, Module
 from vitals.analytics.series import Inputs, load_inputs
+from vitals.db.bulk import chunked
 from vitals.db.models import DerivedDaily, MetricDaily
 from vitals.logging import get_logger
 from vitals.normalize import canonical as silver
@@ -185,16 +186,17 @@ async def _write(session: AsyncSession, *, user_id: uuid.UUID, rows: Sequence[De
     if not payload:
         return
 
-    statement = pg_insert(DerivedDaily).values(list(payload.values()))
-    await session.execute(
-        statement.on_conflict_do_update(
-            constraint="uq_derived_daily_point",
-            set_={
-                "value": statement.excluded.value,
-                "unit": statement.excluded.unit,
-                "coverage": statement.excluded.coverage,
-                "inputs": statement.excluded.inputs,
-                "computed_at": func.now(),
-            },
+    for group in chunked(list(payload.values())):
+        statement = pg_insert(DerivedDaily).values(group)
+        await session.execute(
+            statement.on_conflict_do_update(
+                constraint="uq_derived_daily_point",
+                set_={
+                    "value": statement.excluded.value,
+                    "unit": statement.excluded.unit,
+                    "coverage": statement.excluded.coverage,
+                    "inputs": statement.excluded.inputs,
+                    "computed_at": func.now(),
+                },
+            )
         )
-    )

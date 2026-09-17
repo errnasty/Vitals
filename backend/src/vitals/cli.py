@@ -573,6 +573,189 @@ def recompute(
     raise typer.Exit(asyncio.run(_wrapped()))
 
 
+@app.command()
+def score(
+    since: str | None = typer.Option(None, "--since", help="First day to score, YYYY-MM-DD"),
+    until: str | None = typer.Option(None, "--until", help="Last day (default: latest gold)"),
+    email: str | None = typer.Option(None, "--email", help="Account to score"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report without writing"),
+) -> None:
+    """Compute the Vitals Score from the analytics layer.
+
+    Stores the number, its four pillars and every contribution that fed them, so the
+    waterfall is a query rather than a recalculation. `vitals explain` reads it back.
+    """
+    configure_logging()
+    try:
+        start = date.fromisoformat(since) if since else None
+        end = date.fromisoformat(until) if until else None
+    except ValueError as exc:
+        typer.secho(f"bad date: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+    async def _run() -> int:
+        from vitals.ingest.pipeline import NoSuchUser, resolve_user
+        from vitals.score import MIN_TRUSTED_COVERAGE
+        from vitals.score import score as run_score
+
+        async with get_sessionmaker()() as session:
+            try:
+                user = await resolve_user(session, email=email)
+            except NoSuchUser as exc:
+                typer.secho(str(exc), fg=typer.colors.RED, err=True)
+                return 1
+
+            result = await run_score(
+                session, user_id=user.id, start=start, end=end, dry_run=dry_run
+            )
+            if result.empty:
+                typer.secho(
+                    "no analytics to score - run `vitals recompute` first",
+                    fg=typer.colors.YELLOW,
+                )
+                return 1
+
+            if dry_run:
+                typer.secho("dry run - nothing written", fg=typer.colors.YELLOW)
+            typer.echo(f"{result.days} day(s) {result.start} to {result.end}")
+            typer.echo(
+                f"  scored {result.scored}, trusted {result.trusted}, skipped {result.skipped}"
+            )
+            if result.mean_score is not None and result.mean_coverage is not None:
+                typer.echo(
+                    f"  mean score {result.mean_score:.1f}, "
+                    f"mean coverage {result.mean_coverage:.0%}"
+                )
+
+            if result.pillars:
+                typer.echo("")
+                typer.echo(f"{'pillar':<14}{'days':>6}{'score':>8}{'coverage':>10}")
+                for name, (days, mean, coverage) in sorted(result.pillars.items()):
+                    status = OK if coverage >= MIN_TRUSTED_COVERAGE else WARN
+                    typer.echo(f"  [{status}] {name:<12}{days:>5}{mean:>8.1f}{coverage:>9.0%}")
+
+            if result.trusted < result.scored:
+                typer.echo("")
+                typer.secho(
+                    f"{result.scored - result.trusted} day(s) below the "
+                    f"{MIN_TRUSTED_COVERAGE:.0%} coverage floor are stored but flagged untrusted",
+                    fg=typer.colors.YELLOW,
+                )
+        return 0
+
+    async def _wrapped() -> int:
+        try:
+            return await _run()
+        finally:
+            await dispose_engine()
+
+    raise typer.Exit(asyncio.run(_wrapped()))
+
+
+@app.command()
+def explain(
+    day: str | None = typer.Option(None, "--day", help="Day to explain (default: the latest)"),
+    email: str | None = typer.Option(None, "--email", help="Account to explain"),
+) -> None:
+    """Show the waterfall behind a day's score, read back from storage.
+
+    Every line is what it was, what it scored, and how many points of the final number
+    it is responsible for. The effects sum to the score — no arithmetic here, only
+    formatting.
+    """
+    configure_logging()
+    try:
+        when = date.fromisoformat(day) if day else None
+    except ValueError as exc:
+        typer.secho(f"bad date: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+    async def _run() -> int:
+        from sqlalchemy import select
+
+        from vitals.db.models import ScoreContribution, ScorePillar, VitalsScore
+        from vitals.ingest.pipeline import NoSuchUser, resolve_user
+        from vitals.score.pillars import BY_NAME
+
+        async with get_sessionmaker()() as session:
+            try:
+                user = await resolve_user(session, email=email)
+            except NoSuchUser as exc:
+                typer.secho(str(exc), fg=typer.colors.RED, err=True)
+                return 1
+
+            statement = select(VitalsScore).where(VitalsScore.user_id == user.id)
+            if when is not None:
+                statement = statement.where(VitalsScore.calendar_date == when)
+            row = await session.scalar(
+                statement.order_by(VitalsScore.calendar_date.desc()).limit(1)
+            )
+            if row is None:
+                typer.secho("no score stored for that day", fg=typer.colors.YELLOW)
+                return 1
+
+            flag = "" if row.trusted else "  (untrusted - too little data)"
+            typer.echo(f"{row.calendar_date}   Vitals Score {row.score:.0f}{flag}")
+            typer.echo(f"coverage {row.coverage:.0%}")
+
+            pillars = (
+                (
+                    await session.execute(
+                        select(ScorePillar)
+                        .where(
+                            ScorePillar.user_id == user.id,
+                            ScorePillar.calendar_date == row.calendar_date,
+                        )
+                        .order_by(ScorePillar.weight.desc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            lines = (
+                (
+                    await session.execute(
+                        select(ScoreContribution).where(
+                            ScoreContribution.user_id == user.id,
+                            ScoreContribution.calendar_date == row.calendar_date,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            by_pillar: dict[str, list[Any]] = {}
+            for line in lines:
+                by_pillar.setdefault(line.pillar, []).append(line)
+
+            for pillar in pillars:
+                label = BY_NAME[pillar.pillar].label if pillar.pillar in BY_NAME else pillar.pillar
+                typer.echo("")
+                typer.echo(
+                    f"{label:<14}{pillar.score:>6.0f}   coverage {pillar.coverage:>4.0%}"
+                    f"   weight {pillar.weight:.0f}"
+                )
+                for line in sorted(
+                    by_pillar.get(pillar.pillar, []), key=lambda c: c.effect, reverse=True
+                ):
+                    typer.echo(
+                        f"    {line.metric:<26}{line.value:>12.2f}"
+                        f"{line.points:>7.0f} pts{line.effect:>8.2f} of score"
+                    )
+
+            typer.echo("")
+            typer.echo(f"{'total':<14}{sum(line.effect for line in lines):>6.2f}")
+        return 0
+
+    async def _wrapped() -> int:
+        try:
+            return await _run()
+        finally:
+            await dispose_engine()
+
+    raise typer.Exit(asyncio.run(_wrapped()))
+
+
 def _report(outcome: Any) -> int:
     """Print a sync outcome and turn it into an exit code."""
     colour = {

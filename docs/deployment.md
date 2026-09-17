@@ -6,14 +6,21 @@ been used for a week.
 
 Target shape:
 
-| Service | Railway type | Root directory | Config file | Always on |
-|---|---|---|---|---|
-| `Postgres` | database (official image) | — | — | yes |
-| `api` | web, Serverless enabled | `backend` | `railway.json` | sleeps when idle |
-| `sync` | cron, `0 */6 * * *` | `backend` | `railway.sync.json` (set `RAILWAY_CONFIG_FILE`) | runs ~1 min |
-| `web` | web, Serverless enabled | `frontend` | `railway.json` | optional — see below |
+| Service | Railway type | Root directory | Always on |
+|---|---|---|---|
+| `Postgres` | database (official image) | — | yes |
+| `api` | web, Serverless enabled | `backend` | sleeps when idle |
+| `sync` | cron, `0 */6 * * *` | `backend` | runs ~1 min |
+| `web` | web, Serverless enabled | `frontend` | optional — see below |
 
 All the app services build from a Dockerfile, so what CI builds is what Railway runs.
+
+**Service settings live in Railway, not in this repo.** Railway deprecated Config as
+Code (`railway.json` / `railway.toml`): new services cannot opt into it at all, and
+existing files stop being read on **2026-12-01**. The `railway.json` files this repo
+used to carry were deleted for that reason — they would have silently done nothing.
+Section 2 records every setting instead, and `railway config pull` will capture the live
+project into `.railway/railway.ts` when you want it version-controlled again.
 
 ---
 
@@ -86,11 +93,35 @@ Railway does not until you ask.
 
 Workspace: `Ernest Ng's Projects`. One project, `vitals`, everything inside it.
 
-```
-api    root=backend    → generate a domain, enable Serverless
-sync   root=backend    → RAILWAY_CONFIG_FILE=railway.sync.json, cron 0 */6 * * *
-web    root=frontend   → optional; run locally during the prototype
-```
+`api` — Settings → Source: this repo, root directory `backend`. Then:
+
+| Setting | Value |
+|---|---|
+| Start command | `sh -c "uvicorn vitals.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"` |
+| Pre-deploy command | `alembic upgrade head` |
+| Healthcheck path | `/livez` (never touches the database) |
+| Healthcheck timeout | 60 |
+| Restart policy | `ON_FAILURE`, max 5 |
+| Serverless | **on** |
+| Public domain | generate one |
+
+The `sh -c` wrapper is load-bearing. Railway execs the start command directly rather
+than through a shell, so a bare `--port $PORT` reaches uvicorn as the literal string
+`$PORT` and the container crash-loops on `Invalid value for '--port'`. The Dockerfile's
+own `CMD` already wraps it correctly — leaving the start command blank and letting the
+image decide works just as well.
+
+`sync` — same repo, same root directory `backend`. Then:
+
+| Setting | Value |
+|---|---|
+| Start command | `vitals sync` |
+| Cron schedule | `0 */6 * * *` (UTC) |
+| Restart policy | `NEVER` |
+| Serverless | off — a cron runs to completion |
+| Public domain | none |
+
+`web` — root `frontend`, optional; run it locally during the prototype.
 
 Shared variables (project level):
 

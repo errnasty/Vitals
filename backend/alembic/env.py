@@ -1,7 +1,8 @@
 """Alembic environment — async, driven by vitals.config.
 
-Run migrations against the Supabase session pooler (:5432) or the direct connection,
-never the transaction pooler (:6543).
+Runs against whatever DATABASE_URL points at: Railway's private network from inside a
+deploy, its public proxy from a laptop, a local container in development. Never point
+it at a transaction pooler — asyncpg creates prepared statements unconditionally.
 """
 
 from __future__ import annotations

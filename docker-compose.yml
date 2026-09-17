@@ -1,6 +1,10 @@
-# LOCAL DEVELOPMENT ONLY. Production is Railway (api/web/sync) + Supabase (Postgres).
+# LOCAL DEVELOPMENT ONLY. Production is Railway: Postgres + api + sync cron.
 # Kept deliberately close to the deployed shape: same Dockerfiles, same start commands,
 # same migration step — so "works locally" means something.
+#
+# One deliberate difference: this uses pgvector/pgvector so the phase-9 extension is
+# already here. Railway's official Postgres image has no pgvector, which the initial
+# migration and /healthz both handle — see docs/deployment.md.
 
 services:
   db:

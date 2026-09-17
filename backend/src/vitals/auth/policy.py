@@ -1,9 +1,10 @@
 """Who may use this deployment, and whether it is safe to serve at all.
 
-The allowlist is the second gate behind disabled Supabase sign-ups. Two independent
-gates, because the failure mode of the first one silently regressing — a Supabase
-dashboard toggle flipped, a project restored from a template — is a public health app
-that anyone can create an account on.
+The allowlist is the gate that does not depend on how tokens are issued. Self-issued
+tokens are only ever minted by you, but an external provider's sign-up policy is a
+dashboard toggle away from letting the world in — and the failure mode of that
+regressing silently is a public health app anyone can create an account on. So the
+check lives here, in this repository, reviewable and covered by tests.
 """
 
 from __future__ import annotations
@@ -37,9 +38,11 @@ def assert_auth_ready(settings: Settings) -> None:
     if settings.auth_disabled:
         problems.append("VITALS_AUTH_DISABLED is set outside local development")
     if not settings.auth_configured:
-        problems.append("neither SUPABASE_URL (JWKS) nor SUPABASE_JWT_SECRET is set")
+        problems.append("neither VITALS_AUTH_JWT_SECRET nor VITALS_AUTH_JWKS_URL is set")
     if not settings.allowed_emails:
-        problems.append("VITALS_ALLOWED_EMAILS is empty, so every Supabase account would be let in")
+        problems.append(
+            "VITALS_ALLOWED_EMAILS is empty, so any account the issuer accepts would be let in"
+        )
 
     if problems:
         raise AuthNotReady(

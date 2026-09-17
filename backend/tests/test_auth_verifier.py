@@ -1,4 +1,4 @@
-"""Verification of HS256 (legacy Supabase) tokens, and everything that must be rejected."""
+"""Verification of HS256 (self-issued) tokens, and everything that must be rejected."""
 
 from __future__ import annotations
 
@@ -9,7 +9,17 @@ import uuid
 
 import pytest
 
-from tests.support import EMAIL, PROJECT_URL, SECRET, USER_ID, claims, hs256, local_settings
+from tests.support import (
+    EMAIL,
+    ISSUER_EXTERNAL,
+    PROJECT_URL,
+    SECRET,
+    USER_ID,
+    claims,
+    external_settings,
+    hs256,
+    local_settings,
+)
 from vitals.auth.errors import AuthUnavailable, ExpiredToken, InvalidToken
 from vitals.auth.verifier import TokenVerifier
 
@@ -54,19 +64,19 @@ async def test_rejects_a_forged_signature() -> None:
         await _verifier().verify(hs256(secret="a-different-secret"))
 
 
-async def test_rejects_another_projects_issuer() -> None:
-    with pytest.raises(InvalidToken, match="another project"):
-        await _verifier().verify(hs256(iss="https://evil.supabase.co/auth/v1"))
+async def test_rejects_another_issuers_token() -> None:
+    with pytest.raises(InvalidToken, match="another issuer"):
+        await _verifier().verify(hs256(iss="https://evil.example.com/auth/v1"))
 
 
 async def test_rejects_an_unexpected_audience() -> None:
-    # Supabase stamps aud=authenticated on user tokens; anything else is not one.
+    # aud=authenticated marks an end-user token; anything else is not one.
     with pytest.raises(InvalidToken, match="audience"):
         await _verifier().verify(hs256(aud="anon"))
 
 
 async def test_rejects_a_service_role_token() -> None:
-    """The project's admin key is authentic, and must never authenticate as a user."""
+    """An admin/machine key is authentic, and must never authenticate as a user."""
     with pytest.raises(InvalidToken, match="may not authenticate"):
         await _verifier().verify(hs256(role="service_role"))
 
@@ -105,21 +115,31 @@ async def test_rejects_malformed_input(token: str) -> None:
 
 async def test_reports_unavailable_when_nothing_is_configured() -> None:
     """A misconfigured deployment is 503, not 401: the credentials are not the problem."""
-    verifier = TokenVerifier(local_settings(supabase_jwt_secret=None))
+    verifier = TokenVerifier(local_settings(auth_jwt_secret=None))
     with pytest.raises(AuthUnavailable):
         await verifier.verify(hs256())
 
 
 async def test_rejects_hs256_when_only_asymmetric_verification_is_configured() -> None:
-    verifier = TokenVerifier(local_settings(supabase_jwt_secret=None, supabase_url=PROJECT_URL))
+    verifier = TokenVerifier(external_settings())
     with pytest.raises(InvalidToken, match="no shared secret"):
-        await verifier.verify(hs256(iss=f"{PROJECT_URL}/auth/v1"))
+        await verifier.verify(hs256(iss=ISSUER_EXTERNAL))
 
 
-async def test_issuer_is_derived_from_the_supabase_url() -> None:
+async def test_issuer_and_jwks_come_from_the_auth_settings() -> None:
+    settings = external_settings()
+    assert settings.jwt_issuer == ISSUER_EXTERNAL
+    assert settings.jwks_url == f"{ISSUER_EXTERNAL}/.well-known/jwks.json"
+    assert settings.self_issued is False
+
+
+async def test_a_legacy_supabase_url_still_configures_both() -> None:
+    """An existing .env keeps working; `vitals doctor` is what points at the rename."""
     settings = local_settings(supabase_url=f"{PROJECT_URL}/")
+
     assert settings.jwt_issuer == f"{PROJECT_URL}/auth/v1"
     assert settings.jwks_url == f"{PROJECT_URL}/auth/v1/.well-known/jwks.json"
+    assert settings.legacy_supabase_env == ["SUPABASE_URL"]
 
     principal = await TokenVerifier(settings).verify(
         hs256(iss=f"{PROJECT_URL}/auth/v1", sub=str(uuid.uuid4()))
@@ -127,20 +147,52 @@ async def test_issuer_is_derived_from_the_supabase_url() -> None:
     assert principal.role == "authenticated"
 
 
-async def test_dev_tokens_verify_through_the_production_path() -> None:
-    """Local tokens are not a bypass — they go through the same verifier."""
-    from vitals.auth.dev import dev_user_id, mint_dev_token
+async def test_self_issued_tokens_verify_through_the_production_path() -> None:
+    """A minted token is not a bypass — it goes through the same verifier."""
+    from vitals.auth.tokens import mint_token, self_user_id
 
     settings = local_settings()
-    principal = await TokenVerifier(settings).verify(mint_dev_token(settings, email=EMAIL))
+    principal = await TokenVerifier(settings).verify(mint_token(settings, email=EMAIL))
 
-    assert principal.user_id == dev_user_id(EMAIL)
+    assert principal.user_id == self_user_id(EMAIL)
     assert principal.email == EMAIL
 
 
-async def test_dev_tokens_cannot_be_minted_outside_local() -> None:
-    from vitals.auth.dev import mint_dev_token
+async def test_self_issued_tokens_can_be_minted_in_production() -> None:
+    """With no external provider there is no issuer to forge: this is the login."""
+    from vitals.auth.tokens import mint_token
 
-    settings = local_settings(environment="production", supabase_jwt_secret=SECRET)
-    with pytest.raises(RuntimeError, match="only be minted locally"):
-        mint_dev_token(settings, email=EMAIL)
+    settings = local_settings(
+        environment="production", auth_jwt_secret=SECRET, allowed_emails=[EMAIL]
+    )
+    assert settings.self_issued is True
+
+    principal = await TokenVerifier(settings).verify(mint_token(settings, email=EMAIL))
+    assert principal.email == EMAIL
+
+
+async def test_minting_is_refused_against_an_external_issuer() -> None:
+    """Signing someone else's `iss` here would be a forgery, not a convenience."""
+    from vitals.auth.tokens import MintRefused, mint_token
+
+    settings = external_settings(
+        environment="production", auth_jwt_secret=SECRET, allowed_emails=[EMAIL]
+    )
+    with pytest.raises(MintRefused, match="external issuer"):
+        mint_token(settings, email=EMAIL)
+
+
+async def test_minting_is_refused_for_an_address_outside_the_allowlist() -> None:
+    """A token every request would 403 on is worse than no token at all."""
+    from vitals.auth.tokens import MintRefused, mint_token
+
+    settings = local_settings(allowed_emails=[EMAIL])
+    with pytest.raises(MintRefused, match="VITALS_ALLOWED_EMAILS"):
+        mint_token(settings, email="stranger@example.com")
+
+
+async def test_minting_is_refused_without_a_signing_key() -> None:
+    from vitals.auth.tokens import MintRefused, mint_token
+
+    with pytest.raises(MintRefused, match="VITALS_AUTH_JWT_SECRET"):
+        mint_token(local_settings(auth_jwt_secret=None), email=EMAIL)

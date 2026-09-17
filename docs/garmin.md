@@ -130,7 +130,7 @@ vitals doctor                                    # includes a garmin section
 (`railway run --service sync vitals garmin test`) to find out whether Cloudflare
 tolerates the datacenter IP before a real sync depends on it. If it does not, the sync
 service is deliberately location-independent — it needs only `DATABASE_URL` and
-`VITALS_ENCRYPTION_KEY`, so run that same container at home against the same Supabase
+`VITALS_ENCRYPTION_KEY`, so run that same container at home against the same Postgres
 and leave `api` and `web` on Railway.
 
 ## Bronze
@@ -169,6 +169,6 @@ ten minutes.
 ## FIT files
 
 `download_activity(..., ORIGINAL)` archives the full-resolution timeseries the JSON
-endpoints downsample away. It lands in phase 3, together with Supabase Storage and the
+endpoints downsample away. It lands in phase 3, together with a Railway bucket and the
 `fitdecode` parser — there is nowhere durable to put the bytes until then, and Railway's
 filesystem is not it.

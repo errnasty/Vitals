@@ -69,11 +69,27 @@ async def _doctor() -> int:
     typer.echo("")
     typer.echo("config")
     line(OK, "database_url", _redact(settings.database_url))
+    if settings.in_railway and settings.database_over_public_proxy:
+        # Same database either way, but the public proxy leaves Railway's network and
+        # comes back in: billed egress and extra latency for nothing.
+        line(
+            WARN,
+            "database route",
+            "public proxy from inside Railway; reference the private DATABASE_URL instead",
+        )
     if ":6543" in settings.database_url:
         line(
             WARN,
             "pooler port",
-            "6543 is the transaction pooler; asyncpg needs the session pooler (5432)",
+            "6543 is usually a transaction pooler; asyncpg needs prepared statements",
+        )
+    if settings.in_railway and settings.keeps_connections_warm:
+        # Railway judges idleness by outbound packets, and a warm pool never stops
+        # producing them — so a pooled service bills around the clock even unused.
+        line(
+            WARN,
+            "connection pool",
+            "warm pool keeps this service awake; set VITALS_DB_POOL_MODE=none to let it sleep",
         )
     if not settings.encryption_key:
         line(WARN, "VITALS_ENCRYPTION_KEY", "unset - Garmin credentials cannot be stored")
@@ -85,11 +101,6 @@ async def _doctor() -> int:
             # A key that does not parse means every stored credential is unreadable,
             # which surfaces as a mysterious re-auth loop if it is not caught here.
             line(BAD, "VITALS_ENCRYPTION_KEY", "set but not a valid Fernet key")
-    line(
-        OK if settings.supabase_url else WARN,
-        "SUPABASE_URL",
-        "set" if settings.supabase_url else "unset (required from phase 1)",
-    )
     line(
         OK if settings.openrouter_api_key else WARN,
         "OPENROUTER_API_KEY",
@@ -113,9 +124,9 @@ async def _doctor() -> int:
                 )
             ).scalar_one_or_none()
             line(
-                OK if vector else BAD,
+                OK if vector else (BAD if settings.require_pgvector else WARN),
                 "pgvector",
-                f"v{vector}" if vector else "extension not enabled",
+                f"v{vector}" if vector else "not available on this image (needed from phase 9)",
             )
 
             current = (
@@ -191,7 +202,7 @@ async def _doctor_auth(settings: Any, line: Callable[..., None]) -> None:
     methods = []
     if settings.jwks_url:
         methods.append("JWKS (asymmetric)")
-    if settings.supabase_jwt_secret:
+    if settings.jwt_secret:
         methods.append("shared secret (HS256)")
     line(
         OK if methods else (WARN if settings.is_local else BAD),
@@ -199,10 +210,25 @@ async def _doctor_auth(settings: Any, line: Callable[..., None]) -> None:
         " + ".join(methods) if methods else "none configured - every request will 401",
     )
     line(OK, "issuer", settings.jwt_issuer)
-    if settings.supabase_jwt_secret and len(settings.supabase_jwt_secret.encode()) < 32:
-        # RFC 7518 §3.2: an HS256 key shorter than the hash output weakens the signature.
-        # Supabase's own secret is longer, so this almost always means a hand-typed value.
-        line(WARN, "secret length", "SUPABASE_JWT_SECRET is under 32 bytes")
+    line(
+        OK,
+        "mode",
+        "self-issued (`vitals auth token` mints them)"
+        if settings.self_issued
+        else "external issuer",
+    )
+    secret = settings.jwt_secret
+    if secret and len(secret.encode()) < 32:
+        # RFC 7518 §3.2: an HS256 key shorter than the hash output weakens the
+        # signature. Anything under 32 bytes is almost always a hand-typed value.
+        line(WARN, "secret length", "the HS256 secret is under 32 bytes")
+    if settings.legacy_supabase_env:
+        line(
+            WARN,
+            "legacy env",
+            f"{', '.join(settings.legacy_supabase_env)} still in use; "
+            "rename to VITALS_AUTH_JWT_SECRET / VITALS_AUTH_ISSUER + VITALS_AUTH_JWKS_URL",
+        )
 
     if settings.allowed_emails:
         line(OK, "allowlist", f"{len(settings.allowed_emails)} address(es)")
@@ -210,7 +236,7 @@ async def _doctor_auth(settings: Any, line: Callable[..., None]) -> None:
         line(
             WARN if settings.is_local else BAD,
             "allowlist",
-            "VITALS_ALLOWED_EMAILS is empty - any Supabase account would be accepted",
+            "VITALS_ALLOWED_EMAILS is empty - any account the issuer accepts would be let in",
         )
 
     if settings.auth_disabled:
@@ -242,29 +268,31 @@ async def _doctor_auth(settings: Any, line: Callable[..., None]) -> None:
 def auth_token(
     email: str = typer.Option(..., "--email", "-e", help="Address to mint the token for"),
     hours: int = typer.Option(12, "--hours", "-h", help="Lifetime in hours"),
+    days: int | None = typer.Option(
+        None, "--days", "-d", help="Lifetime in days; overrides --hours"
+    ),
     user_id: str | None = typer.Option(None, "--user-id", help="Override the derived user id"),
 ) -> None:
-    """Mint a local Supabase-shaped access token (local environment only)."""
-    from vitals.auth.dev import mint_dev_token
+    """Mint an access token this deployment signs itself.
+
+    Legitimate wherever no external issuer is configured: there is nobody else's `iss`
+    to forge. Refused when one is, because then the token has to come from them.
+    """
+    from vitals.auth.tokens import MintRefused, mint_token
 
     settings = get_settings()
+    ttl = timedelta(days=days) if days is not None else timedelta(hours=hours)
     try:
-        token = mint_dev_token(
+        token = mint_token(
             settings,
             email=email,
             user_id=uuid.UUID(user_id) if user_id else None,
-            ttl=timedelta(hours=hours),
+            ttl=ttl,
         )
-    except (RuntimeError, ValueError) as exc:
+    except (MintRefused, ValueError) as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from exc
 
-    if settings.allowed_emails and email.strip().lower() not in settings.allowed_emails:
-        typer.secho(
-            f"warning: {email} is not in VITALS_ALLOWED_EMAILS; requests will be rejected with 403",
-            fg=typer.colors.YELLOW,
-            err=True,
-        )
     typer.echo(token)
 
 

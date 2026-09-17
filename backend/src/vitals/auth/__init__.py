@@ -1,8 +1,9 @@
-"""Authentication: Supabase-issued JWTs, verified locally on every request.
+"""Authentication: bearer JWTs, verified locally on every request.
 
-No session state, no callback into Supabase on the hot path — verification is a
-signature check plus claim validation, so the API keeps serving while Supabase Auth
-is unreachable.
+The token is either self-issued (`vitals auth token`, HS256) or minted by an external
+OIDC provider and verified against its JWKS. Either way there is no session state and
+no callback to an issuer on the hot path — verification is a signature check plus
+claim validation, so the API keeps serving while the issuer is unreachable.
 """
 
 from vitals.auth.claims import Principal

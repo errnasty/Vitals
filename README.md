@@ -9,22 +9,23 @@ every number; the model only selects, prioritises, explains and personalises.
 
 ## Status
 
-**Phase 2 — the Garmin connector.** The riskiest part, and the reason everything
-downstream depends only on bronze: an immutable, hash-deduplicated store of verbatim
-provider JSON. Authentication happens once a year on your laptop and never from the
-cloud; tokens live encrypted in the database and survive every redeploy; every request
-passes a rate governor with a persisted cooldown. A daily sync costs ~29 requests and
-seven years of history ~320. See [docs/garmin.md](docs/garmin.md).
+**Phase 3 — the silver layer.** Bronze speaks Garmin; silver speaks one canonical
+vocabulary of 55 metrics, and everything above reads only the translation. Normalizers
+are pure functions and the runner is idempotent, so silver is disposable: drop it, run
+`vitals normalize`, and it rebuilds identically from bronze. A normalizer bug is a
+recompute, never data loss — which is exactly what phase 2's raw store was for.
+See [docs/silver.md](docs/silver.md).
 
-Phases 0-2 are complete in code and covered by CI. Still pending the accounts they
-depend on: the Railway deploy, and a real `vitals garmin login`.
+Phases 0-3 are complete in code and covered by CI, and deployed on Railway. Still
+pending: a real `vitals garmin login`, and the FIT parsing half of phase 3.
 
 | Phase | Deliverable | State |
 |---|---|---|
 | 0 | Scaffold + deploy skeleton, Alembic, config, CI | **code complete** |
 | 1 | JWT auth: self-issued tokens, pluggable OIDC provider | **code complete** |
 | 2 | Garmin connector: local SSO login, encrypted DB token store, rate governor, backfill | **code complete** |
-| 3 | Normalizers → canonical silver model, FIT parsing | |
+| 3 | Normalizers → canonical silver model | **code complete** |
+| 3b | FIT download, storage and parsing | |
 | 4 | Analytics engine (training load, recovery, sleep, body, longevity) | |
 | 5 | Vitals Score: pillars, coverage, calibration, contributions waterfall | |
 | 6 | Next.js dashboard (PWA) | |
@@ -47,6 +48,7 @@ SOURCES   GarminSource (pull, cron) · HealthKitSource (push, webhook)
 BRONZE    raw_payload (JSONB, immutable, hash-deduped) — never lost, never re-scraped
    ↓ normalizers (source-specific, pure)
 SILVER    metric_daily · metric_sample · sleep_session · activity — source-agnostic
+          one canonical vocabulary, fixed units, rebuildable from bronze
    ↓ deterministic Python — all the maths
 GOLD      derived_daily · VITALS SCORE (4 pillars, fully decomposed) · response_profile
    ↓ compact digest (never raw timeseries)
@@ -72,12 +74,13 @@ backend/          FastAPI + SQLAlchemy 2.0 + Alembic, uv-managed
     workers/      jobs invoked by the Railway cron service
     cli.py        vitals doctor | auth | garmin | sync | backfill | (later) score, coach
     sources/      garmin: client, rate governor, endpoint catalog, plan · healthkit — phase 10
-    ingest/       raw store (bronze), pipeline · source resolver — phase 3
+    ingest/       raw store (bronze), pipeline
+    normalize/    canonical vocabulary, per-endpoint normalizers, runner, resolver
     analytics/    training load, recovery, sleep, body, longevity, score
     ai/           digest, OpenRouter client, grounding, coach
   alembic/        migrations
 frontend/         Next.js App Router (PWA)
-docs/             deployment runbook, local development, auth
+docs/             deployment runbook, local development, auth, garmin, silver
 docker-compose.yml  local dev only
 ```
 
@@ -94,6 +97,9 @@ export VITALS_AUTH_JWT_SECRET=$(python -c "import secrets; print(secrets.token_u
 export VITALS_ALLOWED_EMAILS=you@example.com
 curl -H "Authorization: Bearer $(uv run vitals auth token --email you@example.com)" \
      localhost:8000/auth/me
+
+# once bronze holds anything, build the silver layer from it (safe to re-run):
+uv run vitals normalize
 ```
 
 See [docs/local-development.md](docs/local-development.md),

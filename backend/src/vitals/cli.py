@@ -342,8 +342,11 @@ def sync(
     days: int = typer.Option(7, "--days", help="Trailing window; catches Garmin's revisions"),
     email: str | None = typer.Option(None, "--email", help="Account to sync, if several exist"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the request plan, fetch nothing"),
+    normalize: bool = typer.Option(
+        True, "--normalize/--no-normalize", help="Rebuild silver over the same window afterwards"
+    ),
 ) -> None:
-    """Run an incremental sync. Invoked by the Railway `sync` cron service."""
+    """Run an incremental sync, then rebuild silver. Invoked by the Railway cron."""
     configure_logging()
     if source != "garmin":
         typer.secho(f"unknown source {source!r}", fg=typer.colors.RED, err=True)
@@ -360,7 +363,7 @@ def sync(
 
     async def _run() -> Any:
         try:
-            return await run_sync(source=source, days=days, email=email)
+            return await run_sync(source=source, days=days, email=email, normalize=normalize)
         finally:
             await shutdown()
 
@@ -406,6 +409,100 @@ def backfill(
 
     typer.echo(f"backfilling {first} to {last} ({(last - first).days + 1} days)")
     raise typer.Exit(_report(asyncio.run(_run())))
+
+
+@app.command()
+def normalize(
+    since: str | None = typer.Option(None, "--since", help="First day to rebuild, YYYY-MM-DD"),
+    until: str | None = typer.Option(None, "--until", help="Last day (default: no limit)"),
+    endpoints: str | None = typer.Option(
+        None, "--endpoints", help="Only these bronze endpoints, comma-separated"
+    ),
+    email: str | None = typer.Option(None, "--email", help="Account to rebuild, if several exist"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Report what would be produced, write nothing"
+    ),
+) -> None:
+    """Rebuild the silver layer from bronze.
+
+    Safe to run as often as you like: every write is an upsert keyed on the natural
+    key, so this is a projection of bronze rather than an accumulation. After fixing a
+    normalizer, run it again over the affected window and the numbers change in place.
+    """
+    configure_logging()
+    try:
+        start = date.fromisoformat(since) if since else None
+        end = date.fromisoformat(until) if until else None
+    except ValueError as exc:
+        typer.secho(f"bad date: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+    selected = [e.strip() for e in endpoints.split(",") if e.strip()] if endpoints else None
+
+    async def _run() -> int:
+        from vitals.ingest.pipeline import NoSuchUser, resolve_user
+        from vitals.normalize import available_metrics
+        from vitals.normalize import normalize as run_normalize
+
+        async with get_sessionmaker()() as session:
+            try:
+                user = await resolve_user(session, email=email)
+            except NoSuchUser as exc:
+                typer.secho(str(exc), fg=typer.colors.RED, err=True)
+                return 1
+
+            result = await run_normalize(
+                session,
+                user_id=user.id,
+                start=start,
+                end=end,
+                endpoints=selected,
+                dry_run=dry_run,
+            )
+
+            if dry_run:
+                typer.secho("dry run - nothing written", fg=typer.colors.YELLOW)
+            typer.echo(f"{result.payloads} payload(s) read, {result.rows} silver row(s)")
+            typer.echo(
+                f"  daily {result.daily}  samples {result.samples}  "
+                f"sleep {result.sleep}  activities {result.activities}"
+            )
+
+            if result.coverage:
+                typer.echo("")
+                typer.echo("coverage")
+                for item in sorted(result.coverage, key=lambda c: c.endpoint):
+                    # Barren payloads are the signal that matters: a normalizer written
+                    # against the library's documented shape meeting a different one.
+                    status = OK if item.ok else WARN
+                    detail = f"{item.payloads} payload(s) -> {item.rows} row(s)"
+                    if item.barren:
+                        detail += f", {item.barren} produced nothing"
+                    typer.echo(f"  [{status}] {item.endpoint}: {detail}")
+
+            if result.unmapped:
+                typer.echo("")
+                typer.secho(
+                    f"no normalizer for: {', '.join(result.unmapped)}", fg=typer.colors.YELLOW
+                )
+            if result.rejected:
+                typer.secho(f"{result.rejected} value(s) rejected", fg=typer.colors.RED)
+
+            if not dry_run:
+                inventory = await available_metrics(session, user_id=user.id)
+                typer.echo("")
+                typer.echo(f"metrics ({len(inventory)})")
+                for metric, (first, last, days) in inventory.items():
+                    typer.echo(f"  {metric:<32} {days:>5} day(s)  {first} to {last}")
+        return 0
+
+    async def _wrapped() -> int:
+        try:
+            return await _run()
+        finally:
+            await dispose_engine()
+
+    raise typer.Exit(asyncio.run(_wrapped()))
 
 
 def _report(outcome: Any) -> int:

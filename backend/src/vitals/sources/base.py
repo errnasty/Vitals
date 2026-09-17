@@ -3,7 +3,7 @@
 Garmin is a *pull* source on a cron. Apple Health (phase 10) cannot be read
 server-side, so it will be a *push* source: an iOS app POSTing JSON to an endpoint we
 own. Both land in the same `raw_payload` table with a different `source` value, which
-is what lets phase 3's resolver merge them per metric without either connector knowing
+is what lets the silver resolver merge them per metric without either connector knowing
 the other exists.
 """
 

@@ -18,7 +18,7 @@ from vitals.analytics.series import Inputs, Night, Series, trimp
 from vitals.normalize import canonical as silver
 
 DAY = date(2026, 8, 21)
-HISTORY_DAYS = 120
+HISTORY_DAYS = 200
 
 
 def _inputs(
@@ -93,6 +93,35 @@ def test_fitness_decays_through_rest_and_holds_through_absence() -> None:
     )
 
     assert _values(resting)[d.CTL] < _values(absent)[d.CTL]
+
+
+def test_fitness_does_not_swing_between_a_hard_day_and_a_rest_day() -> None:
+    """An exponential average seeded from one window length is ruled by its seed.
+
+    With a steady weekly pattern, six-week fitness should barely move day to day.
+    Computed over exactly its own time constant it swung by more than half, because
+    the value it started from alternated as the window slid.
+    """
+    steady = {}
+    for offset in range(training.CTL_WARMUP_DAYS):
+        day = DAY - timedelta(days=offset)
+        steady[day] = 180.0 if offset % 7 in (1, 4) else (0.0 if offset % 7 == 6 else 70.0)
+
+    worn = _worn(training.CTL_WARMUP_DAYS)
+    today = _values(training.compute(_inputs(series={silver.STEPS: worn}, load=steady), DAY))
+    yesterday = _values(
+        training.compute(
+            _inputs(
+                day=DAY - timedelta(days=1),
+                series={silver.STEPS: worn},
+                load=steady,
+            ),
+            DAY - timedelta(days=1),
+        )
+    )
+
+    assert today[d.TRAINING_LOAD] != yesterday[d.TRAINING_LOAD]  # the days differ
+    assert abs(today[d.CTL] - yesterday[d.CTL]) < 2.0  # the six-week average does not
 
 
 def test_form_is_fitness_minus_fatigue() -> None:

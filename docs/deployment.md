@@ -151,6 +151,7 @@ Service-specific:
 ```
 api:  CORS_ORIGINS=https://<web domain, or http://localhost:3000 while it runs locally>
 web:  API_URL=https://<api domain>
+      VITALS_API_TOKEN=<vitals auth token --days 90>   # server-side only
       NEXT_TELEMETRY_DISABLED=1           # telemetry is outbound traffic; it blocks sleep
 ```
 

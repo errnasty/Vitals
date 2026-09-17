@@ -24,7 +24,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vitals.analytics import body, longevity, recovery, sleep, training
 from vitals.analytics import canonical as d
 from vitals.analytics.model import Derived, Module
-from vitals.analytics.series import Inputs, load_inputs
+from vitals.analytics.series import MAX_WINDOW_DAYS, Inputs, load_inputs
+from vitals.analytics.training import CTL_WARMUP_DAYS
 from vitals.db.bulk import chunked
 from vitals.db.models import DerivedDaily, MetricDaily
 from vitals.logging import get_logger
@@ -34,6 +35,10 @@ from vitals.normalize.resolver import DEFAULT_PREFERENCE
 log = get_logger(__name__)
 
 BATCH_DAYS = 90
+
+# Enough history for every metric: the longest declared window, or the run-up an
+# exponentially weighted average needs to forget its seed — whichever is larger.
+LOOKBACK_DAYS = max(MAX_WINDOW_DAYS, CTL_WARMUP_DAYS)
 
 MODULES: tuple[tuple[str, Module], ...] = (
     ("training", training.compute),
@@ -119,6 +124,7 @@ async def recompute(
             start=chunk_start,
             end=chunk_end,
             prefer=prefer,
+            lookback_days=LOOKBACK_DAYS,
         )
         rows = _derive(inputs)
         result.days += len(inputs.days())

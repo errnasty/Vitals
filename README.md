@@ -9,13 +9,12 @@ every number; the model only selects, prioritises, explains and personalises.
 
 ## Status
 
-**Phase 5 — the Vitals Score.** One number a day from four pillars, stored fully
-decomposed: every contribution carries the points of the final score it is responsible
-for, and they sum to it exactly. Coverage is weight rather than a footnote, so a thin
-dataset lowers the score's confidence instead of quietly faking a complete picture.
-See [docs/score.md](docs/score.md).
+**Phase 6 — the dashboard.** Three server-rendered screens — Today, Breakdown and
+Trends — drawn entirely with the design system, reading one endpoint per screen. Every
+value arrives already formatted, so there is not a single calculation in the frontend.
+See [docs/dashboard.md](docs/dashboard.md).
 
-Phases 0-5 are complete in code and covered by CI, and deployed on Railway. Still
+Phases 0-6 are complete in code and covered by CI, and deployed on Railway. Still
 pending: a real `vitals garmin login`, and the FIT parsing half of phase 3.
 
 | Phase | Deliverable | State |
@@ -27,7 +26,7 @@ pending: a real `vitals garmin login`, and the FIT parsing half of phase 3.
 | 3b | FIT download, storage and parsing | |
 | 4 | Analytics engine (training load, recovery, sleep, body, longevity) | **code complete** |
 | 5 | Vitals Score: pillars, coverage, calibration, contributions waterfall | **code complete** |
-| 6 | Next.js dashboard (PWA) | |
+| 6 | Next.js dashboard: Today, Breakdown, Trends | **code complete** |
 | 7 | AI: digest, OpenRouter, grounding validator, quiet daily brief | |
 | 8 | AI coach: response profile, ranked interventions, N-of-1 experiments | |
 | 9 | Agentic Q&A, pgvector similar-days, journal fusion | |
@@ -80,11 +79,11 @@ backend/          FastAPI + SQLAlchemy 2.0 + Alembic, uv-managed
     score/        curves, the four pillars, composition, engine
     ai/           digest, OpenRouter client, grounding, coach
   alembic/        migrations
-frontend/         Next.js App Router (PWA)
-  app/            routes only - pages, layout, data fetching
+frontend/
+  app/            the product's screens — feature work only
   design/         the UI template: tokens, both themes, primitives, style guide
-docs/             deployment runbook, local development, auth, design system
-docs/             deployment, local dev, auth, garmin, silver, analytics, score, design
+docs/             deployment, local dev, auth, garmin, silver, analytics, score,
+                  dashboard, design-system
 docker-compose.yml  local dev only
 ```
 

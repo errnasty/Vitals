@@ -1,0 +1,421 @@
+"""What the dashboard reads.
+
+One endpoint per screen rather than one per table. A phone on a train pays for round
+trips, and the Today view needs a score, four pillars, a fortnight of history and a
+handful of headline numbers — which is one query plan here and four waterfalls of
+latency if the client assembles it.
+
+Every value arrives **formatted**. The design system's contract is that components take
+formatted strings and never raw records, and the root README's rule is that Python owns
+the arithmetic; a React component deciding how to render 26400 seconds breaks both. So
+the API ships `"7h 20m"`, and the browser draws it.
+
+Raw numbers are still included where something has to be *drawn* rather than read — an
+arc needs a fraction, a sparkline needs its points — and those are the only ones.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import date, timedelta
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from vitals.analytics import canonical as gold
+from vitals.api import format as fmt
+from vitals.api.deps import CurrentUserDep, SessionDep
+from vitals.db.models import DerivedDaily, MetricDaily, ScoreContribution, ScorePillar, VitalsScore
+from vitals.normalize import canonical as silver
+from vitals.score import verdict
+from vitals.score.pillars import BY_NAME
+
+router = APIRouter(tags=["dashboard"])
+
+TREND_DAYS = 14
+MAX_TREND_DAYS = 365
+
+DayQuery = Annotated[date | None, Query(description="Defaults to the most recent scored day")]
+DaysQuery = Annotated[int, Query(ge=7, le=MAX_TREND_DAYS)]
+
+
+class ScoreView(BaseModel):
+    # Rounded, because the gauge *draws this number* as well as the arc. Sending the
+    # raw float would put 65.27882299171765 on the screen, and deciding how many
+    # digits a score has is arithmetic — which belongs here, not in a component.
+    value: float
+    display: str
+    coverage: str
+    trusted: bool
+    rating: int
+    caption: str
+
+
+class PillarView(BaseModel):
+    # Rounded for the same reason: the ring and the number come from one value.
+    name: str
+    label: str
+    value: float
+    display: str
+    coverage: str
+
+
+class HeadlineView(BaseModel):
+    """One row of the "today" list. `key` is what the UI maps to an icon."""
+
+    key: str
+    label: str
+    value: str
+    meta: str | None = None
+
+
+class TodayResponse(BaseModel):
+    date: date | None
+    score: ScoreView | None
+    pillars: list[PillarView]
+    headlines: list[HeadlineView]
+    trend: list[float]
+    # Set when there is nothing to show, so the UI can say why rather than
+    # rendering a convincing set of dashes.
+    empty_reason: str | None = None
+
+
+class ContributionView(BaseModel):
+    pillar: str
+    metric: str
+    label: str
+    value: str
+    points: str
+    points_value: float
+    effect: str
+    effect_value: float
+    coverage: str
+    rationale: str
+
+
+class ExplainResponse(BaseModel):
+    date: date
+    score: ScoreView
+    pillars: list[PillarView]
+    contributions: list[ContributionView]
+
+
+class SeriesPoint(BaseModel):
+    date: date
+    value: float
+
+
+class SeriesView(BaseModel):
+    metric: str
+    label: str
+    latest: str
+    points: list[SeriesPoint]
+
+
+class TrendsResponse(BaseModel):
+    days: int
+    score: list[SeriesPoint]
+    series: list[SeriesView]
+
+
+# ── reading helpers ─────────────────────────────────────────────────────────────
+
+
+async def _score_row(
+    session: AsyncSession, user_id: uuid.UUID, day: date | None
+) -> VitalsScore | None:
+    statement = select(VitalsScore).where(VitalsScore.user_id == user_id)
+    if day is not None:
+        statement = statement.where(VitalsScore.calendar_date == day)
+    row: VitalsScore | None = await session.scalar(
+        statement.order_by(VitalsScore.calendar_date.desc()).limit(1)
+    )
+    return row
+
+
+def _score_view(row: VitalsScore) -> ScoreView:
+    return ScoreView(
+        value=round(row.score),
+        display=fmt.score(row.score),
+        coverage=fmt.percent(row.coverage),
+        trusted=row.trusted,
+        rating=verdict.rating(row.score),
+        caption=verdict.caption(row.score, trusted=row.trusted),
+    )
+
+
+async def _pillar_views(session: AsyncSession, user_id: uuid.UUID, day: date) -> list[PillarView]:
+    rows = (
+        (
+            await session.execute(
+                select(ScorePillar)
+                .where(ScorePillar.user_id == user_id, ScorePillar.calendar_date == day)
+                .order_by(ScorePillar.weight.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        PillarView(
+            name=row.pillar,
+            label=BY_NAME[row.pillar].label if row.pillar in BY_NAME else row.pillar,
+            value=round(row.score),
+            display=fmt.score(row.score),
+            coverage=fmt.percent(row.coverage),
+        )
+        for row in rows
+    ]
+
+
+# Silver and gold hold the same shape for this purpose: a dated value with a unit.
+Layer = type[DerivedDaily] | type[MetricDaily]
+
+
+async def _latest(
+    session: AsyncSession, user_id: uuid.UUID, metric: str, *, model: Layer
+) -> tuple[float, str] | None:
+    """The most recent value of one metric, with its unit."""
+    row: DerivedDaily | MetricDaily | None = await session.scalar(
+        select(model)
+        .where(model.user_id == user_id, model.metric == metric)
+        .order_by(model.calendar_date.desc())
+        .limit(1)
+    )
+    return None if row is None else (row.value, row.unit)
+
+
+async def _headlines(session: AsyncSession, user_id: uuid.UUID) -> list[HeadlineView]:
+    """The four rows under the dial: the numbers worth seeing without a tap."""
+    out: list[HeadlineView] = []
+
+    sleep = await _latest(session, user_id, silver.SLEEP_DURATION, model=MetricDaily)
+    if sleep is not None:
+        efficiency = await _latest(session, user_id, gold.SLEEP_EFFICIENCY, model=DerivedDaily)
+        out.append(
+            HeadlineView(
+                key="sleep",
+                label="Sleep",
+                value=fmt.metric(*sleep),
+                meta=(f"{fmt.metric(*efficiency)} efficiency" if efficiency is not None else None),
+            )
+        )
+
+    resting = await _latest(session, user_id, silver.RESTING_HR, model=MetricDaily)
+    if resting is not None:
+        baseline = await _latest(session, user_id, gold.RHR_BASELINE, model=DerivedDaily)
+        out.append(
+            HeadlineView(
+                key="resting_hr",
+                label="Resting HR",
+                value=fmt.metric(*resting),
+                meta=(f"baseline {fmt.metric(*baseline)} bpm" if baseline is not None else None),
+            )
+        )
+
+    weight = await _latest(session, user_id, gold.WEIGHT_TREND, model=DerivedDaily)
+    if weight is not None:
+        slope = await _latest(session, user_id, gold.WEIGHT_SLOPE, model=DerivedDaily)
+        out.append(
+            HeadlineView(
+                key="body",
+                label="Body",
+                value=fmt.metric(*weight),
+                meta=(
+                    f"{fmt.signed(slope[0], places=2, unit='kg')} / week"
+                    if slope is not None
+                    else None
+                ),
+            )
+        )
+
+    fitness = await _latest(session, user_id, gold.CTL, model=DerivedDaily)
+    if fitness is not None:
+        vo2max = await _latest(session, user_id, gold.VO2MAX_TREND, model=DerivedDaily)
+        out.append(
+            HeadlineView(
+                key="fitness",
+                label="Fitness",
+                value=fmt.metric(*fitness),
+                meta=f"VO₂max {fmt.metric(*vo2max)}" if vo2max is not None else None,
+            )
+        )
+
+    return out
+
+
+async def _score_series(
+    session: AsyncSession, user_id: uuid.UUID, *, days: int, end: date
+) -> list[SeriesPoint]:
+    rows = (
+        await session.execute(
+            select(VitalsScore.calendar_date, VitalsScore.score)
+            .where(
+                VitalsScore.user_id == user_id,
+                VitalsScore.calendar_date > end - timedelta(days=days),
+                VitalsScore.calendar_date <= end,
+            )
+            .order_by(VitalsScore.calendar_date)
+        )
+    ).all()
+    return [SeriesPoint(date=day, value=value) for day, value in rows]
+
+
+# ── endpoints ───────────────────────────────────────────────────────────────────
+
+
+@router.get("/today", response_model=TodayResponse)
+async def today(user: CurrentUserDep, session: SessionDep) -> TodayResponse:
+    """Everything the home screen draws, in one round trip."""
+    row = await _score_row(session, user.id, None)
+    if row is None:
+        # Distinguish "no data yet" from "a bug": the UI says which, and the
+        # difference matters enormously to someone who just set this up.
+        has_silver = await session.scalar(
+            select(MetricDaily.id).where(MetricDaily.user_id == user.id).limit(1)
+        )
+        return TodayResponse(
+            date=None,
+            score=None,
+            pillars=[],
+            headlines=[],
+            trend=[],
+            empty_reason=(
+                "No score yet — run `vitals score` to build it."
+                if has_silver
+                else "No data yet — connect Garmin and run a sync."
+            ),
+        )
+
+    day = row.calendar_date
+    trend = await _score_series(session, user.id, days=TREND_DAYS, end=day)
+    return TodayResponse(
+        date=day,
+        score=_score_view(row),
+        pillars=await _pillar_views(session, user.id, day),
+        headlines=await _headlines(session, user.id),
+        trend=[point.value for point in trend],
+    )
+
+
+@router.get("/score/explain", response_model=ExplainResponse)
+async def explain(
+    user: CurrentUserDep,
+    session: SessionDep,
+    day: DayQuery = None,
+) -> ExplainResponse:
+    """The waterfall: every contribution, and the points of the score it moved."""
+    row = await _score_row(session, user.id, day)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no score for that day")
+
+    rows = (
+        (
+            await session.execute(
+                select(ScoreContribution).where(
+                    ScoreContribution.user_id == user.id,
+                    ScoreContribution.calendar_date == row.calendar_date,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    contributions = []
+    for item in sorted(rows, key=lambda c: c.effect, reverse=True):
+        definition = next(
+            (
+                c
+                for pillar in BY_NAME.values()
+                for c in pillar.contributions
+                if c.metric == item.metric
+            ),
+            None,
+        )
+        contributions.append(
+            ContributionView(
+                pillar=item.pillar,
+                metric=item.metric,
+                label=definition.label if definition else item.metric,
+                value=fmt.metric(item.value, gold.unit_for(item.metric)),
+                points=fmt.score(item.points),
+                points_value=item.points,
+                effect=fmt.number(item.effect, places=1),
+                effect_value=item.effect,
+                coverage=fmt.percent(item.coverage),
+                rationale=definition.rationale if definition else "",
+            )
+        )
+
+    return ExplainResponse(
+        date=row.calendar_date,
+        score=_score_view(row),
+        pillars=await _pillar_views(session, user.id, row.calendar_date),
+        contributions=contributions,
+    )
+
+
+# The series the Trends screen draws, with the label it draws them under.
+TREND_SERIES: tuple[tuple[str, str], ...] = (
+    (gold.CTL, "Fitness"),
+    (gold.SLEEP_DURATION_7D, "Sleep"),
+    (gold.HRV_BASELINE, "HRV baseline"),
+    (gold.VO2MAX_TREND, "VO₂max"),
+    (gold.WEIGHT_TREND, "Weight"),
+    (gold.STEPS_7D, "Steps"),
+)
+
+
+@router.get("/trends", response_model=TrendsResponse)
+async def trends(
+    user: CurrentUserDep,
+    session: SessionDep,
+    days: DaysQuery = 90,
+) -> TrendsResponse:
+    """The long view: the score, and the derived series worth watching behind it."""
+    row = await _score_row(session, user.id, None)
+    end = row.calendar_date if row is not None else date.today()
+    start = end - timedelta(days=days)
+
+    rows = (
+        await session.execute(
+            select(
+                DerivedDaily.metric,
+                DerivedDaily.calendar_date,
+                DerivedDaily.value,
+                DerivedDaily.unit,
+            )
+            .where(
+                DerivedDaily.user_id == user.id,
+                DerivedDaily.metric.in_([metric for metric, _ in TREND_SERIES]),
+                DerivedDaily.calendar_date > start,
+                DerivedDaily.calendar_date <= end,
+            )
+            .order_by(DerivedDaily.calendar_date)
+        )
+    ).all()
+
+    grouped: dict[str, list[tuple[date, float, str]]] = {}
+    for metric, day, value, unit in rows:
+        grouped.setdefault(metric, []).append((day, value, unit))
+
+    series = [
+        SeriesView(
+            metric=metric,
+            label=label,
+            latest=fmt.metric(grouped[metric][-1][1], grouped[metric][-1][2]),
+            points=[SeriesPoint(date=day, value=value) for day, value, _ in grouped[metric]],
+        )
+        for metric, label in TREND_SERIES
+        if grouped.get(metric)
+    ]
+
+    return TrendsResponse(
+        days=days,
+        score=await _score_series(session, user.id, days=days, end=end),
+        series=series,
+    )

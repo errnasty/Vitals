@@ -359,15 +359,29 @@ def sync(
         typer.echo("(activity detail adds up to 3 requests per unseen activity)")
         return
 
+    from vitals.ingest.pipeline import NoSuchUser
     from vitals.workers.jobs import run_sync, shutdown
 
     async def _run() -> Any:
         try:
             return await run_sync(source=source, days=days, email=email, normalize=normalize)
+        except NoSuchUser as exc:
+            return exc
         finally:
             await shutdown()
 
-    raise typer.Exit(_report(asyncio.run(_run())))
+    outcome = asyncio.run(_run())
+
+    if isinstance(outcome, NoSuchUser):
+        # A deployment nobody has signed into yet is *pending setup*, not broken. The
+        # cron should say so once and exit clean — crashing with a traceback every six
+        # hours turns a to-do into an alarm, and buries the real failures when they
+        # come.
+        typer.secho(f"nothing to sync: {outcome}", fg=typer.colors.YELLOW)
+        typer.echo("  sign in once against /auth/me, then run `vitals garmin login` locally")
+        raise typer.Exit(0)
+
+    raise typer.Exit(_report(outcome))
 
 
 @app.command()

@@ -27,6 +27,17 @@ CTL_DAYS = 42
 ATL_DAYS = 7
 WEEK = 7
 
+# How much run-up an exponential average needs before it has forgotten where it
+# started. Four time constants leaves under 2% of the seed.
+#
+# This is not a refinement. An exponential average seeded from the first value of a
+# window exactly one time constant long is *dominated* by that first value — and as
+# the window slides, the seed alternates between a hard day and a rest day. Computed
+# that way, "fitness" swung between 55 and 120 on consecutive days while the athlete
+# trained an identical week. The run-up is what makes the number mean anything.
+WARMUP_FACTOR = 4
+CTL_WARMUP_DAYS = CTL_DAYS * WARMUP_FACTOR
+
 # Foster's monotony divides the week's mean load by its spread, which is undefined for
 # a week of identical sessions — and that week is the *most* monotonous one there is,
 # so dropping it would lose exactly the case the metric exists to flag. Reported at a
@@ -73,7 +84,9 @@ def compute(inputs: Inputs, day: date) -> list[Derived]:
             )
         )
 
-    history = load_history(inputs, day, CTL_DAYS)
+    # The averages run over every day available, not just the window they are named
+    # for; the name is the time constant, not the amount of history it needs.
+    history = load_history(inputs, day, CTL_WARMUP_DAYS)
     observed = sum(1 for value in history if value is not None)
     if observed == 0:
         return out
@@ -83,14 +96,17 @@ def compute(inputs: Inputs, day: date) -> list[Derived]:
     if ctl is None or atl is None:
         return out
 
-    out.append(Derived(metric=d.CTL, calendar_date=day, value=ctl, inputs=observed))
+    # Coverage is still a claim about the six weeks the number describes, however
+    # much run-up went into computing it.
+    recent = sum(1 for value in history[-CTL_DAYS:] if value is not None)
+    out.append(Derived(metric=d.CTL, calendar_date=day, value=ctl, inputs=recent))
     out.append(Derived(metric=d.ATL, calendar_date=day, value=atl, inputs=min(observed, ATL_DAYS)))
     out.append(Derived(metric=d.TSB, calendar_date=day, value=ctl - atl, inputs=observed))
 
     if ctl > 0:
         # Acute:chronic ratio. Read as a trend and a rate of change, not a threshold —
         # the "danger zone" literature it comes from has not held up well.
-        out.append(Derived(metric=d.ACWR, calendar_date=day, value=atl / ctl, inputs=observed))
+        out.append(Derived(metric=d.ACWR, calendar_date=day, value=atl / ctl, inputs=recent))
 
     out.extend(_weekly_strain(inputs, day))
     return out

@@ -1,108 +1,131 @@
 import {
   AppShell,
   Badge,
+  BottomNav,
   Card,
+  CardHeader,
+  Grid2,
   Gutter,
   ListRow,
+  SectionHeader,
+  Sparkline,
   Stack,
   Stat,
+  ScoreGauge,
   ThemeToggle,
   TopBar,
 } from "@/design";
+import { Notice } from "@/app/components/Notice";
+import { fetchToday } from "@/app/lib/api";
+import { headlineIcon, longDate, pillarIcon } from "@/app/lib/display";
+import { navFor } from "@/app/lib/nav";
 
-type HealthCheck = { ok: boolean; version?: string | null; error?: string };
+export const dynamic = "force-dynamic";
 
-type Health = {
-  status: string;
-  version: string;
-  environment: string;
-  git_sha: string | null;
-  latency_ms: number;
-  checks: Record<string, HealthCheck>;
-};
-
-const API_URL = process.env.API_URL ?? "http://localhost:8000";
-
-async function fetchHealth(): Promise<Health | { error: string }> {
-  try {
-    const response = await fetch(`${API_URL}/healthz`, { cache: "no-store" });
-    return (await response.json()) as Health;
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : "unreachable" };
-  }
-}
-
-// Phase 0 exists to prove one thing: web -> api -> database, deployed, end to end.
-// This page is that proof, and nothing more; phase 6 replaces it with the Today view.
-// It is drawn with the design system so the proof and the product look like one app.
+/**
+ * Today — what the app opens on.
+ *
+ * One score owns the screen and everything under it says what the score is made of,
+ * which is the shape the design system's reference screen set out. Every value here
+ * arrives from the API already formatted: there is not a single calculation on this
+ * page, by design.
+ */
 export default async function Page() {
-  const health = await fetchHealth();
-  const reachable = !("error" in health);
+  const result = await fetchToday();
+
+  const header = (
+    <TopBar
+      title="Today"
+      eyebrow={result.ok && result.data.date ? longDate(result.data.date) : "Vitals"}
+      right={<ThemeToggle />}
+    />
+  );
+  const nav = <BottomNav items={navFor("today")} />;
+
+  if (!result.ok) {
+    return (
+      <AppShell header={header} nav={nav}>
+        <Gutter>
+          <Notice title="Can't reach the API" body={result.error} icon="pulse" />
+        </Gutter>
+      </AppShell>
+    );
+  }
+
+  const { score, pillars, headlines, trend, empty_reason } = result.data;
+
+  if (!score) {
+    return (
+      <AppShell header={header} nav={nav}>
+        <Gutter>
+          <Notice
+            title="Nothing to show yet"
+            body={empty_reason ?? "No score has been computed."}
+            command={empty_reason?.includes("vitals score") ? "vitals score" : "vitals sync"}
+          />
+        </Gutter>
+      </AppShell>
+    );
+  }
 
   return (
-    <AppShell
-      header={
-        <TopBar
-          title="Vitals"
-          eyebrow="Phase 0 · skeleton"
-          right={
-            <>
-              <Badge tone={reachable ? "accent" : "neutral"}>
-                {reachable ? "live" : "down"}
-              </Badge>
-              <ThemeToggle />
-            </>
-          }
-        />
-      }
-    >
+    <AppShell header={header} nav={nav}>
       <Gutter>
+        <ScoreGauge
+          value={score.value}
+          label="Vitals Score"
+          rating={score.rating}
+          caption={score.caption}
+        />
+
         <Stack>
-          <Card>
-            <Stat
-              label="Round trip"
-              value={reachable ? health.latency_ms : "—"}
-              unit={reachable ? "ms" : undefined}
-              icon="bolt"
-              accent={reachable}
-              caption={
-                reachable
-                  ? `${health.environment} · ${health.version}${
-                      health.git_sha ? ` · ${health.git_sha.slice(0, 7)}` : ""
-                    }`
-                  : `api unreachable · ${health.error}`
-              }
-            />
-          </Card>
+          {trend.length > 1 ? (
+            <Card>
+              <CardHeader
+                title="Last two weeks"
+                icon="chart"
+                action={
+                  <Badge tone={score.trusted ? "accent" : "neutral"}>
+                    {score.coverage} covered
+                  </Badge>
+                }
+              />
+              <Sparkline data={trend} area />
+            </Card>
+          ) : null}
 
-          <Card padding="sm">
-            <ListRow icon="pulse" label="API" value={reachable ? health.status : "unreachable"} />
-            {reachable ? (
-              <>
-                <ListRow
-                  icon="grid"
-                  label="Database"
-                  value={health.checks.database?.ok ? "connected" : "down"}
+          <SectionHeader title="Pillars" action="Breakdown" actionHref="/score" />
+          <Grid2>
+            {pillars.map((pillar) => (
+              <Card key={pillar.name} padding="sm" href="/score">
+                <Stat
+                  icon={pillarIcon(pillar.name)}
+                  label={pillar.label}
+                  value={pillar.display}
+                  size="sm"
+                  accent={pillar.value >= 80}
+                  caption={pillar.coverage === "100%" ? undefined : `${pillar.coverage} covered`}
                 />
-                <ListRow
-                  icon="sparkle"
-                  label="pgvector"
-                  value={
-                    health.checks.pgvector?.ok ? `v${health.checks.pgvector.version}` : "missing"
-                  }
-                />
-              </>
-            ) : null}
-          </Card>
+              </Card>
+            ))}
+          </Grid2>
 
-          <Card href="/design">
-            <ListRow
-              icon="chart"
-              label="Design system"
-              meta="Tokens, primitives and the reference screens"
-              chevron
-            />
-          </Card>
+          {headlines.length ? (
+            <>
+              <SectionHeader title="Measurements" action="Trends" actionHref="/trends" />
+              <Card padding="sm">
+                {headlines.map((item) => (
+                  <ListRow
+                    key={item.key}
+                    icon={headlineIcon(item.key)}
+                    label={item.label}
+                    meta={item.meta ?? undefined}
+                    value={item.value}
+                  />
+                ))}
+              </Card>
+            </>
+          ) : null}
         </Stack>
       </Gutter>
     </AppShell>

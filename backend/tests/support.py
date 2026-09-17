@@ -1,7 +1,9 @@
 """Shared test helpers: settings, tokens and key material, all generated locally.
 
 Nothing here reaches the network, which is the point — the entire auth layer is
-verifiable without a Supabase project.
+verifiable with no identity provider in existence. `local_settings` builds the
+self-issued deployment (this app signs its own tokens); `external_settings` builds one
+that trusts an outside OIDC provider's JWKS.
 """
 
 from __future__ import annotations
@@ -16,20 +18,37 @@ import httpx
 import jwt
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from vitals.config import Settings
+from vitals.config import SELF_ISSUER, Settings
 
-# 32+ bytes: PyJWT warns below that, and Supabase's real secret is longer still.
+# 32+ bytes: PyJWT warns below that, and a real signing secret is longer still.
 SECRET = "test-jwt-secret-value-padded-to-32-bytes"
-PROJECT_URL = "https://project.supabase.co"
-ISSUER_LOCAL = "https://vitals.local/auth/v1"
+# Stands in for any external OIDC provider — Supabase, Auth0, Clerk.
+PROJECT_URL = "https://idp.example.com"
+ISSUER_EXTERNAL = f"{PROJECT_URL}/auth/v1"
+JWKS_URL = f"{ISSUER_EXTERNAL}/.well-known/jwks.json"
+ISSUER_SELF = SELF_ISSUER
 USER_ID = uuid.UUID("11111111-2222-4333-8444-555555555555")
 EMAIL = "owner@example.com"
 
 
 def local_settings(**overrides: Any) -> Settings:
+    """A self-issuing deployment: one HS256 secret, no external provider."""
     base: dict[str, Any] = {
         "environment": "local",
-        "supabase_jwt_secret": SECRET,
+        "auth_jwt_secret": SECRET,
+        "allowed_emails": [],
+    }
+    base.update(overrides)
+    return Settings(**base)
+
+
+def external_settings(**overrides: Any) -> Settings:
+    """A deployment that trusts an outside provider's JWKS and signs nothing itself."""
+    base: dict[str, Any] = {
+        "environment": "local",
+        "auth_issuer": ISSUER_EXTERNAL,
+        "auth_jwks_url": JWKS_URL,
+        "auth_jwt_secret": None,
         "allowed_emails": [],
     }
     base.update(overrides)
@@ -39,7 +58,7 @@ def local_settings(**overrides: Any) -> Settings:
 def claims(**overrides: Any) -> dict[str, Any]:
     now = int(time.time())
     payload: dict[str, Any] = {
-        "iss": ISSUER_LOCAL,
+        "iss": ISSUER_SELF,
         "aud": "authenticated",
         "sub": str(USER_ID),
         "email": EMAIL,
@@ -60,7 +79,7 @@ def hs256(secret: str = SECRET, **overrides: Any) -> str:
 
 
 class EcKey:
-    """A P-256 signing key plus the JWK the fake Supabase JWKS endpoint publishes."""
+    """A P-256 signing key plus the JWK the fake JWKS endpoint publishes."""
 
     def __init__(self, kid: str) -> None:
         self.kid = kid
@@ -88,12 +107,12 @@ class EcKey:
         )
 
     def sign(self, **overrides: Any) -> str:
-        payload = claims(iss=f"{PROJECT_URL}/auth/v1", **overrides)
+        payload = claims(iss=ISSUER_EXTERNAL, **overrides)
         return jwt.encode(payload, self._private, algorithm="ES256", headers={"kid": self.kid})
 
 
 class FakeJwks:
-    """An httpx transport standing in for `/auth/v1/.well-known/jwks.json`."""
+    """An httpx transport standing in for the provider's `.well-known/jwks.json`."""
 
     def __init__(self, *keys: EcKey, extra: list[dict[str, Any]] | None = None) -> None:
         self.keys = list(keys)

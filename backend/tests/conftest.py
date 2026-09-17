@@ -16,15 +16,20 @@ os.environ.setdefault(
 )
 os.environ.setdefault("ENVIRONMENT", "local")
 
-# Auth is env-driven, so a developer's real .env would otherwise leak a live Supabase
-# project into the test run and make results depend on the machine.
+# Auth and capability flags are env-driven, so a developer's real .env would otherwise
+# leak a live deployment into the test run and make results depend on the machine.
 _AUTH_ENV = (
-    "SUPABASE_URL",
-    "SUPABASE_ANON_KEY",
-    "SUPABASE_SERVICE_ROLE_KEY",
-    "SUPABASE_JWT_SECRET",
+    "VITALS_AUTH_ISSUER",
+    "VITALS_AUTH_JWKS_URL",
+    "VITALS_AUTH_JWT_SECRET",
+    "VITALS_AUTH_AUDIENCE",
     "VITALS_ALLOWED_EMAILS",
     "VITALS_AUTH_DISABLED",
+    "VITALS_REQUIRE_PGVECTOR",
+    "VITALS_DB_POOL_MODE",
+    # Legacy names the settings object still falls back to.
+    "SUPABASE_URL",
+    "SUPABASE_JWT_SECRET",
 )
 
 
@@ -68,7 +73,7 @@ def _test_database_url() -> str:
 
     Never the configured DATABASE_URL itself unless it is already a test database:
     these fixtures drop every table they create, and a developer pointing
-    DATABASE_URL at their real Supabase project should not be one `pytest` away from
+    DATABASE_URL at their real deployment should not be one `pytest` away from
     losing it.
     """
     override = os.environ.get("VITALS_TEST_DATABASE_URL")

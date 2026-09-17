@@ -1,9 +1,9 @@
-"""Verification of asymmetrically-signed tokens — how current Supabase projects sign.
+"""Verification of asymmetrically-signed tokens — how an external OIDC provider signs.
 
-These tests never reach the network: an httpx MockTransport plays the part of
-`/auth/v1/.well-known/jwks.json`, which is what makes the whole JWKS path — rotation,
-caching, outages, and the algorithm-confusion defence — developable with no Supabase
-project in existence.
+These tests never reach the network: an httpx MockTransport plays the part of the
+provider's `.well-known/jwks.json`, which is what makes the whole JWKS path — rotation,
+caching, outages, and the algorithm-confusion defence — developable with no identity
+provider in existence.
 """
 
 from __future__ import annotations
@@ -11,16 +11,22 @@ from __future__ import annotations
 import jwt
 import pytest
 
-from tests.support import PROJECT_URL, SECRET, EcKey, FakeJwks, claims, forge, local_settings
+from tests.support import (
+    ISSUER_EXTERNAL,
+    SECRET,
+    EcKey,
+    FakeJwks,
+    claims,
+    external_settings,
+    forge,
+)
 from vitals.auth.errors import AuthUnavailable, InvalidToken
 from vitals.auth.jwks import JwksCache
 from vitals.auth.verifier import TokenVerifier
 
 
 def _verifier(jwks: FakeJwks, *, ttl_s: int = 600, min_refresh_s: int = 60, **overrides: object):
-    options: dict[str, object] = {"supabase_url": PROJECT_URL, "supabase_jwt_secret": None}
-    options.update(overrides)
-    settings = local_settings(**options)
+    settings = external_settings(**overrides)
     cache = JwksCache(
         settings.jwks_url or "",
         ttl_s=ttl_s,
@@ -75,7 +81,7 @@ async def test_key_rotation_is_picked_up() -> None:
     assert jwks.requests == 2
 
 
-async def test_unknown_kid_does_not_hammer_supabase() -> None:
+async def test_unknown_kid_does_not_hammer_the_issuer() -> None:
     """An attacker-chosen `kid` must not be a free refetch on every request."""
     key, stranger = EcKey("key-1"), EcKey("key-unknown")
     jwks = FakeJwks(key)
@@ -90,7 +96,7 @@ async def test_unknown_kid_does_not_hammer_supabase() -> None:
 
 
 async def test_cold_cache_outage_is_503_not_401() -> None:
-    """Supabase being down must not look like the user's token being wrong."""
+    """The provider being down must not look like the user's token being wrong."""
     key = EcKey("key-1")
     jwks = FakeJwks(key)
     jwks.fail = True
@@ -115,9 +121,7 @@ async def test_outage_retries_are_rate_limited() -> None:
     key = EcKey("key-1")
     jwks = FakeJwks(key)
     jwks.fail = True
-    cache = JwksCache(
-        "https://project.supabase.co/jwks", min_refresh_s=3600, transport=jwks.transport
-    )
+    cache = JwksCache("https://idp.example.com/jwks", min_refresh_s=3600, transport=jwks.transport)
 
     for _ in range(4):
         with pytest.raises(AuthUnavailable):
@@ -137,7 +141,7 @@ async def test_rejects_a_token_signed_with_the_public_key() -> None:
     jwks = FakeJwks(key)
     forged = forge(
         {"alg": "HS256", "typ": "JWT", "kid": "key-1"},
-        claims(iss=f"{PROJECT_URL}/auth/v1"),
+        claims(iss=ISSUER_EXTERNAL),
         hmac_key=key.public_pem.encode(),
     )
 
@@ -145,7 +149,7 @@ async def test_rejects_a_token_signed_with_the_public_key() -> None:
         await _verifier(jwks).verify(forged)
 
     with pytest.raises(InvalidToken, match="signature"):
-        await _verifier(jwks, supabase_jwt_secret=SECRET).verify(forged)
+        await _verifier(jwks, auth_jwt_secret=SECRET).verify(forged)
 
 
 async def test_rejects_a_symmetric_key_served_from_the_key_set() -> None:
@@ -156,7 +160,7 @@ async def test_rejects_a_symmetric_key_served_from_the_key_set() -> None:
     # rather than being turned away earlier for being HS256.
     forged = forge(
         {"alg": "ES256", "typ": "JWT", "kid": "sneaky"},
-        claims(iss=f"{PROJECT_URL}/auth/v1"),
+        claims(iss=ISSUER_EXTERNAL),
         hmac_key=b"secret-value",
     )
 
@@ -167,7 +171,7 @@ async def test_rejects_a_symmetric_key_served_from_the_key_set() -> None:
 async def test_single_key_sets_tolerate_a_missing_kid() -> None:
     key = EcKey("key-1")
     jwks = FakeJwks(key)
-    token = jwt.encode(claims(iss=f"{PROJECT_URL}/auth/v1"), key._private, algorithm="ES256")
+    token = jwt.encode(claims(iss=ISSUER_EXTERNAL), key._private, algorithm="ES256")
 
     assert await _verifier(jwks).verify(token)
 
@@ -175,7 +179,7 @@ async def test_single_key_sets_tolerate_a_missing_kid() -> None:
 async def test_multi_key_sets_require_a_kid() -> None:
     first, second = EcKey("key-1"), EcKey("key-2")
     jwks = FakeJwks(first, second)
-    token = jwt.encode(claims(iss=f"{PROJECT_URL}/auth/v1"), first._private, algorithm="ES256")
+    token = jwt.encode(claims(iss=ISSUER_EXTERNAL), first._private, algorithm="ES256")
 
     with pytest.raises(InvalidToken, match="unknown signing key"):
         await _verifier(jwks).verify(token)

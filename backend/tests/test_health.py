@@ -57,13 +57,38 @@ async def test_healthz_reports_database_and_pgvector() -> None:
     assert response.status_code == 200
     assert body["status"] == "ok"
     assert body["checks"]["database"]["ok"] is True
-    assert body["checks"]["pgvector"] == {"ok": True, "version": "0.8.0"}
+    assert body["checks"]["pgvector"] == {
+        "ok": True,
+        "present": True,
+        "version": "0.8.0",
+        "required": False,
+    }
 
 
-async def test_healthz_flags_missing_pgvector_without_failing() -> None:
+async def test_healthz_reports_missing_pgvector_without_failing() -> None:
+    """Railway's official Postgres image has no pgvector, and nothing needs it yet."""
     async with _client(_FakeSession(vector=None)) as client:
         response = await client.get("/healthz")
+
     assert response.status_code == 200
+    assert response.json()["checks"]["pgvector"] == {
+        "ok": True,
+        "present": False,
+        "version": None,
+        "required": False,
+    }
+
+
+async def test_healthz_fails_on_missing_pgvector_once_it_is_required(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Phase 9 flips the switch, and the same absence becomes a real outage."""
+    monkeypatch.setenv("VITALS_REQUIRE_PGVECTOR", "true")
+
+    async with _client(_FakeSession(vector=None)) as client:
+        response = await client.get("/healthz")
+
+    assert response.status_code == 503
     assert response.json()["checks"]["pgvector"]["ok"] is False
 
 

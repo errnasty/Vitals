@@ -48,7 +48,7 @@ jobs:
       - name: Tests
         run: uv run pytest -q
       # Migrations must apply to a real Postgres, not just parse. This is the check that
-      # would have caught a bad migration before it reached Supabase.
+      # would have caught a bad migration before it reached the deployed database.
       - name: Migrations apply
         run: uv run alembic upgrade head
       - name: Migrations reverse

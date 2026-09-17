@@ -17,12 +17,12 @@ passes a rate governor with a persisted cooldown. A daily sync costs ~29 request
 seven years of history ~320. See [docs/garmin.md](docs/garmin.md).
 
 Phases 0-2 are complete in code and covered by CI. Still pending the accounts they
-depend on: the Railway + Supabase deploy, and a real `vitals garmin login`.
+depend on: the Railway deploy, and a real `vitals garmin login`.
 
 | Phase | Deliverable | State |
 |---|---|---|
 | 0 | Scaffold + deploy skeleton, Alembic, config, CI | **code complete** |
-| 1 | Supabase Auth + JWT middleware | **code complete** |
+| 1 | JWT auth: self-issued tokens, pluggable OIDC provider | **code complete** |
 | 2 | Garmin connector: local SSO login, encrypted DB token store, rate governor, backfill | **code complete** |
 | 3 | Normalizers → canonical silver model, FIT parsing | |
 | 4 | Analytics engine (training load, recovery, sleep, body, longevity) | |
@@ -52,11 +52,12 @@ GOLD      derived_daily · VITALS SCORE (4 pillars, fully decomposed) · respons
    ↓ compact digest (never raw timeseries)
 AI        quiet daily brief · coach · agentic Q&A · similar-day RAG
    ↓
-FastAPI (REST + SSE, Supabase-JWT guarded) → Next.js PWA
+FastAPI (REST + SSE, JWT guarded) → Next.js PWA
 ```
 
-Deployed on **Railway** (`api`, `web`, `sync` cron); data in **Supabase**
-(Postgres + pgvector, Auth, Storage).
+Deployed entirely on **Railway**: Postgres (official image, managed backups), an
+`api` service, and a `sync` cron. No second provider — the app issues its own tokens,
+and file storage (FIT, photos) lands on a Railway bucket when phase 3 needs it.
 
 ## Repository layout
 
@@ -88,8 +89,8 @@ uv run alembic upgrade head
 uv run vitals doctor
 uv run uvicorn vitals.api.main:app --reload
 
-# no Supabase project needed to work on the API:
-export SUPABASE_JWT_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+# no identity provider needed — this deployment signs its own tokens:
+export VITALS_AUTH_JWT_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(48))")
 export VITALS_ALLOWED_EMAILS=you@example.com
 curl -H "Authorization: Bearer $(uv run vitals auth token --email you@example.com)" \
      localhost:8000/auth/me
@@ -105,9 +106,11 @@ silver and gold is re-derivable from it, so a normalizer bug is a recompute rath
 data loss. Re-fetching an unchanged week writes nothing; a day Garmin revised lands
 beside the original.
 
-Health data sits behind two independent gates: Supabase sign-ups are disabled, and
-`VITALS_ALLOWED_EMAILS` is enforced on every request. The API will not start outside
-local development unless both a verification method and an allowlist are configured.
+Health data is gated by `VITALS_ALLOWED_EMAILS`, enforced on every request whatever
+issued the token. The API will not start outside local development unless both a
+verification method and an allowlist are configured. Tokens are self-issued by default
+(`vitals auth token`); pointing `VITALS_AUTH_ISSUER` / `VITALS_AUTH_JWKS_URL` at an OIDC
+provider swaps in a real identity provider without a code change.
 
 Garmin data is read through the unofficial Connect API (`python-garminconnect`): the
 official Health API does not support personal use, and commercial aggregators are B2B

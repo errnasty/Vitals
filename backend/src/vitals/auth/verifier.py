@@ -1,10 +1,11 @@
-"""Supabase access-token verification.
+"""Access-token verification.
 
-Supabase signs end-user JWTs one of two ways, and both are supported here:
+Two signing schemes are supported, and a token selects between them by its own header:
 
-* **legacy projects** — HS256 with the project's shared `SUPABASE_JWT_SECRET`;
-* **current projects** — an asymmetric key (ES256 by default) whose public half is
-  published as JWKS.
+* **HS256** with this deployment's shared secret (`VITALS_AUTH_JWT_SECRET`) — the
+  self-issued case, and what a legacy Supabase project used;
+* **asymmetric** (ES256 by default) against a key published as JWKS by an external
+  provider (`VITALS_AUTH_JWKS_URL`).
 
 The header's `alg` selects which *path* runs, but never the algorithm a key is
 verified with: the HMAC path only ever uses the shared secret with `["HS256"]`, and
@@ -25,12 +26,12 @@ from vitals.auth.errors import AuthUnavailable, ExpiredToken, InvalidToken
 from vitals.auth.jwks import JwksCache
 from vitals.config import Settings
 
-# Supabase's legacy signing scheme is HS256 and nothing else.
+# The only symmetric scheme we accept. Never inferred from the token itself.
 HMAC_ALGORITHMS = frozenset({"HS256"})
 ASYMMETRIC_ALGORITHMS = frozenset({"ES256", "ES384", "ES512", "RS256", "RS384", "RS512", "EdDSA"})
 
 # Claims we refuse to infer a default for. `sub` identifies the user, `exp` bounds the
-# damage of a leaked token, `aud`/`iss` scope it to this project.
+# damage of a leaked token, `aud`/`iss` scope it to this deployment.
 REQUIRED_CLAIMS = ["exp", "iat", "sub", "aud", "iss"]
 
 
@@ -39,7 +40,7 @@ class TokenVerifier:
 
     def __init__(self, settings: Settings, *, jwks: JwksCache | None = None) -> None:
         self._settings = settings
-        self._secret = settings.supabase_jwt_secret
+        self._secret = settings.jwt_secret
         if jwks is None and settings.jwks_url:
             jwks = JwksCache(
                 settings.jwks_url,
@@ -115,7 +116,7 @@ class TokenVerifier:
         except jwt.InvalidAudienceError as exc:
             raise InvalidToken("token was not issued for this audience") from exc
         except jwt.InvalidIssuerError as exc:
-            raise InvalidToken("token was issued by another project") from exc
+            raise InvalidToken("token was issued by another issuer") from exc
         except jwt.MissingRequiredClaimError as exc:
             raise InvalidToken(f"token is missing claim '{exc.claim}'") from exc
         except jwt.InvalidSignatureError as exc:

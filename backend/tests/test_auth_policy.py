@@ -1,10 +1,10 @@
-"""The two gates that keep a public URL from being an open health-data endpoint."""
+"""The gates that keep a public URL from being an open health-data endpoint."""
 
 from __future__ import annotations
 
 import pytest
 
-from tests.support import EMAIL, PROJECT_URL, local_settings
+from tests.support import EMAIL, external_settings, local_settings
 from vitals.auth.errors import NotAllowed
 from vitals.auth.policy import AuthNotReady, assert_auth_ready, check_allowed
 from vitals.auth.verifier import TokenVerifier
@@ -27,7 +27,7 @@ async def test_allowlist_is_case_insensitive() -> None:
 
 
 async def test_other_accounts_are_rejected() -> None:
-    """Supabase sign-ups are disabled; this is the gate that does not depend on that."""
+    """The gate that holds however the token was issued, and whoever issued it."""
     principal = await _principal(email="stranger@example.com")
     with pytest.raises(NotAllowed):
         check_allowed(local_settings(allowed_emails=[EMAIL]), principal)
@@ -47,18 +47,18 @@ def test_allowlist_parses_a_comma_separated_env_var(monkeypatch: pytest.MonkeyPa
 
 
 def test_local_may_run_with_nothing_configured() -> None:
-    assert_auth_ready(local_settings(supabase_jwt_secret=None))
+    assert_auth_ready(local_settings(auth_jwt_secret=None))
 
 
 @pytest.mark.parametrize(
     ("overrides", "expected"),
     [
         ({}, "VITALS_ALLOWED_EMAILS is empty"),
-        ({"supabase_jwt_secret": None, "allowed_emails": [EMAIL]}, "neither SUPABASE_URL"),
         (
-            {"auth_disabled": True, "allowed_emails": [EMAIL], "supabase_url": PROJECT_URL},
-            "VITALS_AUTH_DISABLED",
+            {"auth_jwt_secret": None, "allowed_emails": [EMAIL]},
+            "neither VITALS_AUTH_JWT_SECRET",
         ),
+        ({"auth_disabled": True, "allowed_emails": [EMAIL]}, "VITALS_AUTH_DISABLED"),
     ],
 )
 def test_production_refuses_to_start_when_misconfigured(
@@ -70,7 +70,10 @@ def test_production_refuses_to_start_when_misconfigured(
         assert_auth_ready(settings)
 
 
-def test_production_starts_when_configured() -> None:
-    assert_auth_ready(
-        local_settings(environment="production", supabase_url=PROJECT_URL, allowed_emails=[EMAIL])
-    )
+def test_production_starts_when_self_issuing() -> None:
+    """No external provider needed: a signing secret plus an allowlist is a valid deploy."""
+    assert_auth_ready(local_settings(environment="production", allowed_emails=[EMAIL]))
+
+
+def test_production_starts_behind_an_external_issuer() -> None:
+    assert_auth_ready(external_settings(environment="production", allowed_emails=[EMAIL]))

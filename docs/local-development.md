@@ -20,16 +20,16 @@ uv run pytest -q
 ```
 
 `vitals doctor` is the fastest way to tell a config problem from a database problem —
-it prints redacted config, the Postgres version, whether pgvector is enabled, and
-whether the schema is at Alembic head.
+it prints redacted config, how tokens are verified, the Postgres version, whether
+pgvector is available, and whether the schema is at Alembic head.
 
-## Auth, with no Supabase project
+## Auth, with no identity provider
 
-The auth layer is fully exercisable offline: `vitals auth token` mints a real JWT with
-the claims Supabase issues, verified by the same code path as a production token.
+There is nothing to sign up for: this deployment signs its own tokens, and
+`vitals auth token` mints one that the production code path verifies unchanged.
 
 ```bash
-export SUPABASE_JWT_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+export VITALS_AUTH_JWT_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(48))")
 export VITALS_ALLOWED_EMAILS=you@example.com
 
 TOKEN=$(uv run vitals auth token --email you@example.com)
@@ -37,8 +37,10 @@ uv run vitals auth verify "$TOKEN"
 curl -H "Authorization: Bearer $TOKEN" localhost:8000/auth/me
 ```
 
-Minting is refused outside `ENVIRONMENT=local`. For UI work, `VITALS_AUTH_DISABLED=true`
-turns auth off entirely — also local-only. See [auth.md](auth.md).
+The same commands work against the deployed API with the same secret. Minting is refused
+only when an external OIDC provider is configured — there the provider is the one
+entitled to sign. For UI work, `VITALS_AUTH_DISABLED=true` turns auth off entirely —
+local-only. See [auth.md](auth.md).
 
 ## Garmin
 
@@ -83,8 +85,15 @@ docker compose run --rm sync         # the cron job, one-shot, as it runs on Rai
 The compose file uses the same Dockerfiles and start commands as Railway, so a local
 pass means something about the deployed shape.
 
-## A note on Postgres versions
+## A note on Postgres images
 
-Local dev uses `pgvector/pgvector:pg17`; Supabase runs its own build with `vector`
-available as an extension. The migration enables the extension either way, so the two
-stay in step.
+Local dev and CI use `pgvector/pgvector:pg17`. Railway's official Postgres image is
+version 18 and ships **no pgvector** — so the initial migration enables the extension
+only where it is actually available, and `/healthz` reports `present: false` rather than
+failing. Nothing before phase 9 reads a vector.
+
+The practical consequence: a migration that assumes pgvector will pass locally and fail
+on Railway. When phase 9 arrives, either move Railway to a pgvector-capable image (and
+take over backups, since managed PITR needs the official one) or keep vectors out of
+Postgres. `VITALS_REQUIRE_PGVECTOR=true` turns the absence back into a hard failure once
+something depends on it.

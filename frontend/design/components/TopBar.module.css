@@ -1,0 +1,66 @@
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--v-s-3);
+  min-height: 56px;
+  padding: calc(var(--v-safe-top) + var(--v-s-3)) var(--v-gutter) var(--v-s-3);
+  /* The bar reads as part of the canvas until content scrolls under it. */
+  background: linear-gradient(var(--v-bg) 55%, rgba(9, 10, 9, 0));
+  backdrop-filter: blur(12px);
+}
+
+/* Over a hero photo the bar has to disappear entirely. */
+.transparent {
+  background: none;
+  backdrop-filter: none;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--v-t-h2);
+  font-weight: 500;
+  letter-spacing: var(--v-track-tight);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.centered .title {
+  text-align: center;
+  font-size: var(--v-t-body);
+  font-weight: 500;
+}
+
+.side {
+  display: flex;
+  align-items: center;
+  gap: var(--v-s-2);
+}
+
+/* Equal-width sides keep a centred title actually centred. */
+.centered .side {
+  flex: 0 0 auto;
+  min-width: 40px;
+}
+
+.centered .side:last-child {
+  justify-content: flex-end;
+}
+
+.eyebrow {
+  display: block;
+  font-size: var(--v-t-xs);
+  letter-spacing: var(--v-track-label);
+  text-transform: uppercase;
+  color: var(--v-text-faint);
+  margin-bottom: 2px;
+  /* The ellipsis on .title only governs its own inline content, so the eyebrow
+     needs its own or a long one runs off the edge. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

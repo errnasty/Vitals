@@ -1,0 +1,133 @@
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v-s-1);
+  min-width: 0;
+}
+
+/* Label under the value — the treatment for a single hero readout. */
+.below {
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: var(--v-s-2);
+}
+
+.below .value {
+  justify-content: center;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: var(--v-s-2);
+  font-size: var(--v-t-xs);
+  letter-spacing: var(--v-track-label);
+  text-transform: uppercase;
+  color: var(--v-text-faint);
+}
+
+.labelIcon {
+  color: var(--v-accent);
+}
+
+/* Value and unit share a baseline, so a unit never drags the number off it. */
+.value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--v-s-2);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--v-track-tight);
+  line-height: 1;
+}
+
+.number {
+  font-family: var(--v-font-display);
+  font-weight: 400;
+}
+
+.md .number {
+  font-size: var(--v-t-h1);
+}
+
+.sm .number {
+  font-size: var(--v-t-h2);
+}
+
+.xs .number {
+  font-size: var(--v-t-h3);
+}
+
+.lg .number {
+  font-size: var(--v-t-display);
+  font-weight: 300;
+}
+
+.unit {
+  font-size: var(--v-t-sm);
+  color: var(--v-text-faint);
+  letter-spacing: 0;
+}
+
+.target {
+  font-size: var(--v-t-sm);
+  color: var(--v-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.accent .number {
+  color: var(--v-accent);
+}
+
+.caption {
+  font-size: var(--v-t-sm);
+  color: var(--v-text-dim);
+}
+
+/* ---- Delta ---- */
+.delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--v-t-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.up {
+  color: var(--v-ok);
+}
+
+.down {
+  color: var(--v-bad);
+}
+
+.flat {
+  color: var(--v-text-faint);
+}
+
+/* ---- Group: stats side by side with hairline dividers ---- */
+.group {
+  display: flex;
+  gap: var(--v-s-3);
+}
+
+.group > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Columns here are narrow - about 57px on a 320px phone - so the label drops a
+   step and loses the wide tracking. A wrapped label would knock its number out
+   of line with its neighbours'. */
+.group .label {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  gap: var(--v-s-1);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.divided > * + * {
+  border-left: 1px solid var(--v-line);
+  padding-left: var(--v-s-3);
+}

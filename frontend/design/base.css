@@ -1,0 +1,143 @@
+/*
+ * Element defaults. Everything here is unavoidable global styling — resets and
+ * document-level typography. Component styling belongs in a CSS module.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--v-bg);
+  color: var(--v-text);
+  font-family: var(--v-font);
+  font-size: var(--v-t-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Source Serif 4 carries an optical-size axis: sturdier stems on the 10px
+   * labels, finer ones on the 52px readouts. Not applied by default in every
+   * engine, so ask for it explicitly. */
+  font-optical-sizing: auto;
+  /* A phone app has no rubber-band horizontal scroll. */
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
+}
+
+/* The canvas is not flat black: a cold top light and a faint lime floor give the
+ * dark UI depth without ever reading as a colour. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 60% at 50% -10%, var(--v-canvas-top), transparent 60%),
+    radial-gradient(80% 45% at 50% 108%, var(--v-canvas-floor), transparent 70%),
+    var(--v-bg);
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+dl,
+dd {
+  margin: 0;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 500;
+  letter-spacing: var(--v-track-tight);
+  line-height: 1.15;
+}
+
+/* Every number in this app is read as a number, so digits never reflow width. */
+:where(output, time, data, .v-num) {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+svg {
+  display: block;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--v-accent);
+  outline-offset: 2px;
+  border-radius: var(--v-r-xs);
+}
+
+::selection {
+  background: var(--v-accent);
+  color: var(--v-text-on-accent);
+}
+
+/* Scrollbars, where they are drawn at all, stay out of the way. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--v-line-strong) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

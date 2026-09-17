@@ -1,0 +1,113 @@
+.row {
+  display: flex;
+  gap: var(--v-s-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* Chips run to the screen edge, so the gutter is applied here and unwound
+   * on the scroller rather than clipping the row. */
+  padding-inline: var(--v-gutter);
+  margin-inline: calc(var(--v-gutter) * -1);
+  scroll-padding-inline: var(--v-gutter);
+}
+
+.row::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--v-s-2);
+  flex: 0 0 auto;
+  height: 34px;
+  padding-inline: var(--v-s-4);
+  border-radius: var(--v-r-pill);
+  border: 1px solid var(--v-line-strong);
+  background: var(--v-surface-glass);
+  backdrop-filter: blur(10px);
+  color: var(--v-text);
+  font-size: var(--v-t-sm);
+  transition: background-color var(--v-dur) var(--v-ease),
+    color var(--v-dur) var(--v-ease),
+    border-color var(--v-dur) var(--v-ease);
+}
+
+.chip:hover {
+  border-color: var(--v-text-faint);
+}
+
+.selected {
+  background: var(--v-accent);
+  border-color: transparent;
+  color: var(--v-text-on-accent);
+}
+
+.selected:hover {
+  border-color: transparent;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--v-r-pill);
+  background: currentColor;
+  opacity: 0.7;
+}
+
+/* ---- Segmented control ---- */
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: var(--v-r-pill);
+  background: var(--v-surface-2);
+  border: 1px solid var(--v-line);
+}
+
+.segment {
+  flex: 1;
+  height: 30px;
+  padding-inline: var(--v-s-4);
+  border-radius: var(--v-r-pill);
+  font-size: var(--v-t-sm);
+  color: var(--v-text-faint);
+  transition: background-color var(--v-dur) var(--v-ease),
+    color var(--v-dur) var(--v-ease);
+}
+
+.segment:hover {
+  color: var(--v-text-dim);
+}
+
+.segmentOn {
+  background: var(--v-surface-3);
+  color: var(--v-text);
+}
+
+.segmentOn:hover {
+  color: var(--v-text);
+}
+
+.fill {
+  display: flex;
+  width: 100%;
+}
+
+/* ---- Badge: a read-only status marker, never interactive ---- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--v-s-1);
+  height: 22px;
+  padding-inline: var(--v-s-2);
+  border-radius: var(--v-r-xs);
+  background: var(--v-accent-soft);
+  color: var(--v-accent);
+  font-size: var(--v-t-xs);
+  letter-spacing: var(--v-track-label);
+  text-transform: uppercase;
+}
+
+.badgeNeutral {
+  background: var(--v-surface-3);
+  color: var(--v-text-dim);
+}

@@ -1,0 +1,64 @@
+.frame {
+  position: relative;
+  flex: 0 0 auto;
+  width: 320px;
+  height: 660px;
+  border-radius: 46px;
+  padding: 10px;
+  /* Handset hardware, not UI: black in both themes. */
+  background: linear-gradient(160deg, #2c302b, #0e100e);
+  box-shadow: var(--v-shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  /* A transform makes this element the containing block for the shell's
+   * position:fixed nav, so each frame keeps its own tab bar. */
+  transform: translateZ(0);
+}
+
+.screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 38px;
+  overflow: hidden auto;
+  scrollbar-width: none;
+  /* The shell measures itself against the frame, not the viewport. */
+  --v-app-min-h: 100%;
+  --v-safe-top: 26px;
+  --v-safe-bottom: 10px;
+  background:
+    radial-gradient(120% 60% at 50% -10%, var(--v-canvas-top), transparent 60%),
+    radial-gradient(80% 45% at 50% 108%, var(--v-canvas-floor), transparent 70%),
+    var(--v-bg);
+}
+
+.screen::-webkit-scrollbar {
+  display: none;
+}
+
+/* The notch, purely so the mock reads as a phone. */
+.notch {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 92px;
+  height: 24px;
+  border-radius: var(--v-r-pill);
+  background: #050605;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.caption {
+  margin-top: var(--v-s-3);
+  text-align: center;
+  font-size: var(--v-t-xs);
+  letter-spacing: var(--v-track-label);
+  text-transform: uppercase;
+  color: var(--v-text-faint);
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}

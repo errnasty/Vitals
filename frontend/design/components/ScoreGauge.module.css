@@ -1,0 +1,69 @@
+.wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin-inline: auto;
+}
+
+.svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.track {
+  stroke: var(--v-track);
+}
+
+.value {
+  /* The lit part of the arc glows; the track does not. */
+  filter: drop-shadow(0 0 10px var(--v-glow));
+  transition: stroke-dasharray var(--v-dur-slow) var(--v-ease);
+}
+
+/* The readout is centred on the arc's circle, not on the svg box — the arc is
+ * open at the bottom, so those are not the same point. */
+.center {
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  transform: translateY(-58%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.number {
+  font-family: var(--v-font-display);
+  font-size: var(--v-t-display);
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: var(--v-track-tight);
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  font-size: var(--v-t-sm);
+  color: var(--v-text-dim);
+}
+
+.stars {
+  display: flex;
+  gap: 3px;
+  margin-top: var(--v-s-1);
+  color: var(--v-accent);
+}
+
+.starOff {
+  color: var(--v-text-faint);
+  opacity: 0.4;
+}
+
+.caption {
+  font-size: var(--v-t-xs);
+  letter-spacing: var(--v-track-label);
+  text-transform: uppercase;
+  color: var(--v-text-faint);
+}

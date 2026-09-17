@@ -1,0 +1,112 @@
+.hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 520px;
+  padding: var(--v-s-5);
+  padding-top: calc(var(--v-safe-top) + var(--v-s-5));
+  border-radius: 0 0 var(--v-r-2xl) var(--v-r-2xl);
+  overflow: hidden;
+  isolation: isolate;
+  /* The cover art is dark in both themes, so this block opts out of the theme's
+   * text colour rather than turning unreadable in light mode. */
+  color: var(--v-on-media);
+}
+
+.media {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background-size: cover;
+  background-position: center;
+}
+
+/* No photo yet: a soft mesh that reads as an intentional cover rather than as a
+ * missing image. Swap it by passing `image`. Deliberately NOT themed: it stands
+ * in for a photograph, and photographs do not have a light mode. */
+.placeholder {
+  background:
+    radial-gradient(70% 55% at 30% 20%, rgba(201, 247, 63, 0.16), transparent 70%),
+    radial-gradient(80% 60% at 78% 35%, rgba(121, 184, 245, 0.12), transparent 72%),
+    radial-gradient(90% 70% at 50% 95%, rgba(0, 0, 0, 0.9), transparent 60%),
+    linear-gradient(170deg, #2a2f28, #101210 60%, #090a09);
+}
+
+/* Film grain keeps the large flat gradient from banding on an OLED phone. */
+.grain {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.16;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* The scrim is what makes white text legible over any photo the user swaps in. */
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    180deg,
+    var(--v-media-scrim-top) 0%,
+    rgba(9, 10, 9, 0) 28%,
+    rgba(9, 10, 9, 0.35) 62%,
+    var(--v-media-scrim-bottom) 100%
+  );
+}
+
+.top {
+  position: absolute;
+  top: calc(var(--v-safe-top) + var(--v-s-4));
+  left: var(--v-s-5);
+  right: var(--v-s-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--v-s-3);
+}
+
+.eyebrow {
+  font-size: var(--v-t-xs);
+  letter-spacing: var(--v-track-label);
+  text-transform: uppercase;
+  color: var(--v-accent);
+  margin-bottom: var(--v-s-2);
+}
+
+.greeting {
+  font-family: var(--v-font-display);
+  font-size: 2.75rem;
+  font-weight: 300;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  margin-bottom: var(--v-s-3);
+}
+
+.greeting strong {
+  display: block;
+  font-weight: 300;
+}
+
+.body {
+  max-width: 24ch;
+  font-size: var(--v-t-sm);
+  color: var(--v-on-media-dim);
+  margin-bottom: var(--v-s-5);
+}
+
+.footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--v-s-3);
+  margin-top: var(--v-s-5);
+}
+
+.actions {
+  display: flex;
+  gap: var(--v-s-2);
+}

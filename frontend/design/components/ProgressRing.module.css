@@ -1,0 +1,38 @@
+.wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.svg {
+  /* Start the ring at 12 o'clock rather than 3. */
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+
+.track {
+  stroke: var(--v-track);
+}
+
+.value {
+  stroke: var(--v-accent);
+  filter: drop-shadow(0 0 8px var(--v-glow));
+  transition: stroke-dashoffset var(--v-dur-slow) var(--v-ease);
+}
+
+.center {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.number {
+  font-family: var(--v-font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--v-track-tight);
+  font-weight: 400;
+}

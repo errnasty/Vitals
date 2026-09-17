@@ -1,3 +1,15 @@
+import {
+  AppShell,
+  Badge,
+  Card,
+  Gutter,
+  ListRow,
+  Stack,
+  Stat,
+  ThemeToggle,
+  TopBar,
+} from "@/design";
+
 type HealthCheck = { ok: boolean; version?: string | null; error?: string };
 
 type Health = {
@@ -22,54 +34,77 @@ async function fetchHealth(): Promise<Health | { error: string }> {
 
 // Phase 0 exists to prove one thing: web -> api -> database, deployed, end to end.
 // This page is that proof, and nothing more; phase 6 replaces it with the Today view.
+// It is drawn with the design system so the proof and the product look like one app.
 export default async function Page() {
   const health = await fetchHealth();
   const reachable = !("error" in health);
 
   return (
-    <main>
-      <h1>Vitals</h1>
-      <p className="muted">Phase 0 — deployment skeleton.</p>
+    <AppShell
+      header={
+        <TopBar
+          title="Vitals"
+          eyebrow="Phase 0 · skeleton"
+          right={
+            <>
+              <Badge tone={reachable ? "accent" : "neutral"}>
+                {reachable ? "live" : "down"}
+              </Badge>
+              <ThemeToggle />
+            </>
+          }
+        />
+      }
+    >
+      <Gutter>
+        <Stack>
+          <Card>
+            <Stat
+              label="Round trip"
+              value={reachable ? health.latency_ms : "—"}
+              unit={reachable ? "ms" : undefined}
+              icon="bolt"
+              accent={reachable}
+              caption={
+                reachable
+                  ? `${health.environment} · ${health.version}${
+                      health.git_sha ? ` · ${health.git_sha.slice(0, 7)}` : ""
+                    }`
+                  : `api unreachable · ${health.error}`
+              }
+            />
+          </Card>
 
-      <dl className="rows">
-        <div className="row">
-          <dt>api</dt>
-          <dd className={reachable ? "ok" : "bad"}>
-            {reachable ? health.status : `unreachable · ${health.error}`}
-          </dd>
-        </div>
-        {reachable && (
-          <>
-            <div className="row">
-              <dt>database</dt>
-              <dd className={health.checks.database?.ok ? "ok" : "bad"}>
-                {health.checks.database?.ok ? "connected" : "down"}
-              </dd>
-            </div>
-            <div className="row">
-              <dt>pgvector</dt>
-              <dd className={health.checks.pgvector?.ok ? "ok" : "bad"}>
-                {health.checks.pgvector?.ok ? `v${health.checks.pgvector.version}` : "missing"}
-              </dd>
-            </div>
-            <div className="row">
-              <dt>environment</dt>
-              <dd>{health.environment}</dd>
-            </div>
-            <div className="row">
-              <dt>version</dt>
-              <dd>
-                {health.version}
-                {health.git_sha ? ` · ${health.git_sha.slice(0, 7)}` : ""}
-              </dd>
-            </div>
-            <div className="row">
-              <dt>round trip</dt>
-              <dd>{health.latency_ms} ms</dd>
-            </div>
-          </>
-        )}
-      </dl>
-    </main>
+          <Card padding="sm">
+            <ListRow icon="pulse" label="API" value={reachable ? health.status : "unreachable"} />
+            {reachable ? (
+              <>
+                <ListRow
+                  icon="grid"
+                  label="Database"
+                  value={health.checks.database?.ok ? "connected" : "down"}
+                />
+                <ListRow
+                  icon="sparkle"
+                  label="pgvector"
+                  value={
+                    health.checks.pgvector?.ok ? `v${health.checks.pgvector.version}` : "missing"
+                  }
+                />
+              </>
+            ) : null}
+          </Card>
+
+          <Card href="/design">
+            <ListRow
+              icon="chart"
+              label="Design system"
+              meta="Tokens, primitives and the reference screens"
+              chevron
+            />
+          </Card>
+        </Stack>
+      </Gutter>
+    </AppShell>
   );
 }

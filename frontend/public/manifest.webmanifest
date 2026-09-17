@@ -4,7 +4,7 @@
   "description": "Analytical all-in-one health platform",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#fbfbfa",
-  "theme_color": "#fbfbfa",
+  "background_color": "#090a09",
+  "theme_color": "#090a09",
   "icons": []
 }

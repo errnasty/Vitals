@@ -7,6 +7,7 @@ from vitals.db.base import Base
 from vitals.db.models.activity import Activity
 from vitals.db.models.app_user import AppUser
 from vitals.db.models.credential import GARMIN_PASSWORD, GARMIN_TOKENS, Credential
+from vitals.db.models.derived import DerivedDaily
 from vitals.db.models.metric import MetricDaily, MetricSample
 from vitals.db.models.raw_payload import RawPayload
 from vitals.db.models.sleep import SleepSession
@@ -20,6 +21,7 @@ __all__ = [
     "AppUser",
     "Base",
     "Credential",
+    "DerivedDaily",
     "MetricDaily",
     "MetricSample",
     "RawPayload",

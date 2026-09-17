@@ -9,14 +9,14 @@ every number; the model only selects, prioritises, explains and personalises.
 
 ## Status
 
-**Phase 3 — the silver layer.** Bronze speaks Garmin; silver speaks one canonical
-vocabulary of 55 metrics, and everything above reads only the translation. Normalizers
-are pure functions and the runner is idempotent, so silver is disposable: drop it, run
-`vitals normalize`, and it rebuilds identically from bronze. A normalizer bug is a
-recompute, never data loss — which is exactly what phase 2's raw store was for.
-See [docs/silver.md](docs/silver.md).
+**Phase 4 — the analytics engine.** Five pure modules turn silver into the numbers that
+mean something: training load and form, recovery against your own baseline, sleep debt
+and regularity, body trends, and the longevity markers with real mortality evidence
+behind them. Every derived row carries its own **coverage**, so a fitness figure built
+from six days is never mistaken for one built from six weeks.
+See [docs/analytics.md](docs/analytics.md).
 
-Phases 0-3 are complete in code and covered by CI, and deployed on Railway. Still
+Phases 0-4 are complete in code and covered by CI, and deployed on Railway. Still
 pending: a real `vitals garmin login`, and the FIT parsing half of phase 3.
 
 | Phase | Deliverable | State |
@@ -26,7 +26,7 @@ pending: a real `vitals garmin login`, and the FIT parsing half of phase 3.
 | 2 | Garmin connector: local SSO login, encrypted DB token store, rate governor, backfill | **code complete** |
 | 3 | Normalizers → canonical silver model | **code complete** |
 | 3b | FIT download, storage and parsing | |
-| 4 | Analytics engine (training load, recovery, sleep, body, longevity) | |
+| 4 | Analytics engine (training load, recovery, sleep, body, longevity) | **code complete** |
 | 5 | Vitals Score: pillars, coverage, calibration, contributions waterfall | |
 | 6 | Next.js dashboard (PWA) | |
 | 7 | AI: digest, OpenRouter, grounding validator, quiet daily brief | |
@@ -51,6 +51,7 @@ SILVER    metric_daily · metric_sample · sleep_session · activity — source-
           one canonical vocabulary, fixed units, rebuildable from bronze
    ↓ deterministic Python — all the maths
 GOLD      derived_daily · VITALS SCORE (4 pillars, fully decomposed) · response_profile
+          every row carries the coverage it was computed from
    ↓ compact digest (never raw timeseries)
 AI        quiet daily brief · coach · agentic Q&A · similar-day RAG
    ↓
@@ -76,14 +77,14 @@ backend/          FastAPI + SQLAlchemy 2.0 + Alembic, uv-managed
     sources/      garmin: client, rate governor, endpoint catalog, plan · healthkit — phase 10
     ingest/       raw store (bronze), pipeline
     normalize/    canonical vocabulary, per-endpoint normalizers, runner, resolver
-    analytics/    training load, recovery, sleep, body, longevity, score
+    analytics/    maths, derived vocabulary, five modules, engine
     ai/           digest, OpenRouter client, grounding, coach
   alembic/        migrations
 frontend/         Next.js App Router (PWA)
   app/            routes only - pages, layout, data fetching
   design/         the UI template: tokens, both themes, primitives, style guide
 docs/             deployment runbook, local development, auth, design system
-docs/             deployment runbook, local development, auth, garmin, silver
+docs/             deployment, local dev, auth, garmin, silver, analytics, design
 docker-compose.yml  local dev only
 ```
 
@@ -101,8 +102,9 @@ export VITALS_ALLOWED_EMAILS=you@example.com
 curl -H "Authorization: Bearer $(uv run vitals auth token --email you@example.com)" \
      localhost:8000/auth/me
 
-# once bronze holds anything, build the silver layer from it (safe to re-run):
-uv run vitals normalize
+# once bronze holds anything, build the layers above it (both safe to re-run):
+uv run vitals normalize    # bronze -> silver
+uv run vitals recompute    # silver -> gold
 ```
 
 See [docs/local-development.md](docs/local-development.md),

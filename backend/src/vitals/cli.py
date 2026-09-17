@@ -505,6 +505,74 @@ def normalize(
     raise typer.Exit(asyncio.run(_wrapped()))
 
 
+@app.command()
+def recompute(
+    since: str | None = typer.Option(None, "--since", help="First day to recompute, YYYY-MM-DD"),
+    until: str | None = typer.Option(None, "--until", help="Last day (default: latest silver)"),
+    email: str | None = typer.Option(None, "--email", help="Account to recompute"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be written"),
+) -> None:
+    """Rebuild the analytics layer from silver.
+
+    Idempotent, like `normalize`: gold is a projection of silver, so this can be run as
+    often as you like and re-run after changing a formula. Coverage is reported per
+    metric, because a fitness number computed from six days and one computed from six
+    weeks are not the same claim.
+    """
+    configure_logging()
+    try:
+        start = date.fromisoformat(since) if since else None
+        end = date.fromisoformat(until) if until else None
+    except ValueError as exc:
+        typer.secho(f"bad date: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+    async def _run() -> int:
+        from vitals.analytics import recompute as run_recompute
+        from vitals.ingest.pipeline import NoSuchUser, resolve_user
+
+        async with get_sessionmaker()() as session:
+            try:
+                user = await resolve_user(session, email=email)
+            except NoSuchUser as exc:
+                typer.secho(str(exc), fg=typer.colors.RED, err=True)
+                return 1
+
+            result = await run_recompute(
+                session, user_id=user.id, start=start, end=end, dry_run=dry_run
+            )
+
+            if result.empty:
+                typer.secho(
+                    "no silver data to work from - run `vitals normalize` first",
+                    fg=typer.colors.YELLOW,
+                )
+                return 1
+
+            if dry_run:
+                typer.secho("dry run - nothing written", fg=typer.colors.YELLOW)
+            typer.echo(
+                f"{result.days} day(s) {result.start} to {result.end}, "
+                f"{result.rows} derived value(s)"
+            )
+            typer.echo("")
+            typer.echo(f"{'metric':<26}{'days':>6}  coverage")
+            for metric, (count, coverage) in sorted(result.metrics.items()):
+                # Low coverage is not an error; it is the honest state of a young
+                # dataset, and phase 5 is required to respect it.
+                status = OK if coverage >= 0.8 else WARN
+                typer.echo(f"  [{status}] {metric:<24}{count:>5}  {coverage:>5.0%}")
+        return 0
+
+    async def _wrapped() -> int:
+        try:
+            return await _run()
+        finally:
+            await dispose_engine()
+
+    raise typer.Exit(asyncio.run(_wrapped()))
+
+
 def _report(outcome: Any) -> int:
     """Print a sync outcome and turn it into an exit code."""
     colour = {

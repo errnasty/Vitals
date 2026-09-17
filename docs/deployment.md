@@ -97,6 +97,7 @@ Workspace: `Ernest Ng's Projects`. One project, `vitals`, everything inside it.
 
 | Setting | Value |
 |---|---|
+| Builder | Dockerfile, path `Dockerfile` (relative to the root directory) |
 | Start command | `sh -c "uvicorn vitals.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"` |
 | Pre-deploy command | `alembic upgrade head` |
 | Healthcheck path | `/livez` (never touches the database) |
@@ -105,16 +106,27 @@ Workspace: `Ernest Ng's Projects`. One project, `vitals`, everything inside it.
 | Serverless | **on** |
 | Public domain | generate one |
 
-The `sh -c` wrapper is load-bearing. Railway execs the start command directly rather
-than through a shell, so a bare `--port $PORT` reaches uvicorn as the literal string
-`$PORT` and the container crash-loops on `Invalid value for '--port'`. The Dockerfile's
-own `CMD` already wraps it correctly — leaving the start command blank and letting the
-image decide works just as well.
+Two things bite here, and both only show up on a real deploy:
+
+- **The `sh -c` wrapper is load-bearing.** Railway execs the start command directly
+  rather than through a shell, so a bare `--port $PORT` reaches uvicorn as the literal
+  string `$PORT` and the container crash-loops on `Invalid value for '--port'`. The
+  Dockerfile's own `CMD` already wraps it correctly — leaving the start command blank
+  and letting the image decide works just as well.
+- **Set the builder explicitly.** A new service defaults to Railpack, Railway's
+  autodetecting builder, and will happily build this project without ever reading the
+  Dockerfile — so the pinned `python:3.13-slim` and `uv sync --frozen --no-dev` are
+  quietly not what runs.
+
+A setting changed in the dashboard applies on the *next* deployment. Railway's Redeploy
+button re-runs the previous deployment's snapshot, config and all, so it will not pick
+up a setting you just changed — push a commit (or trigger a fresh deploy) instead.
 
 `sync` — same repo, same root directory `backend`. Then:
 
 | Setting | Value |
 |---|---|
+| Builder | Dockerfile, path `Dockerfile` |
 | Start command | `vitals sync` |
 | Cron schedule | `0 */6 * * *` (UTC) |
 | Restart policy | `NEVER` |
@@ -169,6 +181,9 @@ Migrations run as the api service's `preDeployCommand` (`alembic upgrade head`),
 failed migration blocks the deploy instead of shipping a broken schema.
 
 ## 3. Verify
+
+The live project is `vitals` in `Ernest Ng's Projects`; the api answers on
+`https://api-production-8951.up.railway.app`.
 
 ```bash
 curl -sf https://<api>.up.railway.app/livez      # process up, no DB involved

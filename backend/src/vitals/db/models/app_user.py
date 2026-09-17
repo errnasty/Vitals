@@ -29,7 +29,7 @@ class AppUser(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     email: Mapped[str | None] = mapped_column(String(320), unique=True, nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    # Load-bearing from phase 3 on: Garmin timestamps are stored in UTC and the
+    # Load-bearing from silver on: Garmin timestamps are stored in UTC and the
     # calendar date is derived, never taken from the provider's *Local fields.
     timezone: Mapped[str] = mapped_column(
         String(64), nullable=False, default="UTC", server_default="UTC"

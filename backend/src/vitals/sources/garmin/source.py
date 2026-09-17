@@ -43,8 +43,9 @@ log = get_logger(__name__)
 
 SOURCE = "garmin"
 
-# Detail fetched once per activity. The FIT file (`download_activity`) lands in phase 3
-# together with Supabase Storage and the fitdecode parser.
+# Detail fetched once per activity. The FIT file (`download_activity`) is still to
+# come: it needs somewhere to put the blobs and a parser, and is independent of the
+# silver schema — see docs/silver.md.
 ACTIVITY_DETAIL: tuple[tuple[str, str], ...] = (
     ("activity", "get_activity"),
     ("activity_details", "get_activity_details"),
@@ -222,7 +223,7 @@ class GarminSource:
             return [RawRecord(call.endpoint, item, calendar_date=day) for day, item in dated]
 
         # Unrecognised shape: keep it whole, filed under the window's end. Nothing is
-        # lost — bronze is verbatim, and phase 3 is where payloads are interpreted.
+        # lost — bronze is verbatim, and the normalizers are where payloads are interpreted.
         fallback = call.window[1] if call.window else None
         return [RawRecord(call.endpoint, payload, calendar_date=fallback)]
 

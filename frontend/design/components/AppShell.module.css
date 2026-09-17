@@ -1,0 +1,56 @@
+/* The app column. A phone layout that stays a phone layout on a desktop. */
+.shell {
+  position: relative;
+  width: 100%;
+  max-width: var(--v-app-max);
+  margin-inline: auto;
+  /* Overridable so the style guide can render the shell inside a phone frame
+   * instead of at viewport height. */
+  min-height: var(--v-app-min-h, 100dvh);
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+}
+
+/* Scrollable body. The bottom padding clears the floating nav plus the home
+ * indicator, so the last card is never trapped underneath it. */
+.body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--v-s-4);
+  padding-bottom: calc(var(--v-navbar-h) + var(--v-s-8) + var(--v-safe-bottom));
+}
+
+/* A detail screen has no tab bar, so it has nothing to clear. */
+.noNav {
+  padding-bottom: calc(var(--v-s-8) + var(--v-safe-bottom));
+}
+
+.gutter {
+  padding-inline: var(--v-gutter);
+}
+
+/* A section that deliberately breaks the gutter — the hero, a full-bleed map. */
+.bleed {
+  margin-inline: 0;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v-s-3);
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--v-s-3);
+}
+
+@media (min-width: 520px) {
+  .shell {
+    /* Breathing room once there is a desktop viewport behind the column. */
+    border-inline: 1px solid var(--v-line);
+  }
+}

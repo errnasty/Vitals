@@ -1,0 +1,58 @@
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  width: 100%;
+}
+
+.bar {
+  flex: 1;
+  min-width: 2px;
+  border-radius: var(--v-r-pill);
+  background: var(--v-accent);
+  /* Bars below the axis still need a visible stub, or the day reads as missing
+   * data rather than as a quiet day. */
+  min-height: 3px;
+  transition: height var(--v-dur-slow) var(--v-ease);
+}
+
+.muted {
+  background: var(--v-track);
+}
+
+.dim {
+  background: var(--v-accent);
+  opacity: 0.35;
+}
+
+.axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--v-s-2);
+  font-size: var(--v-t-xs);
+  letter-spacing: var(--v-track-label);
+  text-transform: uppercase;
+  color: var(--v-text-faint);
+}
+
+/* ---- Sparkline ---- */
+.spark {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.sparkLine {
+  fill: none;
+  stroke: var(--v-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 6px var(--v-glow));
+}
+
+.sparkArea {
+  fill: var(--v-accent-softer);
+  stroke: none;
+}

@@ -1,0 +1,110 @@
+/* A floating pill rather than an edge-to-edge tab bar: it reads as an object on
+ * top of the content, which is what lets the content run full-bleed behind it. */
+.wrap {
+  position: fixed;
+  z-index: 30;
+  bottom: calc(var(--v-safe-bottom) + var(--v-s-4));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(100% - var(--v-s-8), calc(var(--v-app-max) - var(--v-s-8)));
+  display: flex;
+  align-items: center;
+  gap: var(--v-s-2);
+  pointer-events: none;
+}
+
+.pill {
+  pointer-events: auto;
+  flex: 1;
+  /* Without this the tab labels set a floor on the pill's width and shove the
+     action button off the edge on a narrow phone. */
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--v-s-1);
+  padding: var(--v-s-2);
+  border-radius: var(--v-r-pill);
+  background: var(--v-nav-bg);
+  border: 1px solid var(--v-line);
+  backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: var(--v-shadow-lg);
+}
+
+.item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  position: relative;
+  padding: var(--v-s-2) 2px;
+  min-height: 44px;
+  justify-content: center;
+  border-radius: var(--v-r-pill);
+  color: var(--v-text-faint);
+  transition: color var(--v-dur) var(--v-ease),
+    background-color var(--v-dur) var(--v-ease);
+}
+
+.item:hover {
+  color: var(--v-text-dim);
+}
+
+.active {
+  color: var(--v-text-on-accent);
+  background: var(--v-accent);
+}
+
+.active:hover {
+  color: var(--v-text-on-accent);
+}
+
+.label {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Inactive tabs are icon-only: four labels plus the action button do not fit on
+   a 320px phone, and a clipped word reads worse than no word. The text stays in
+   the DOM so the control keeps its accessible name. */
+.item:not(.active) .label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The primary action lives outside the pill so it never competes with tabs. */
+.action {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--v-r-pill);
+  background: var(--v-accent);
+  color: var(--v-text-on-accent);
+  box-shadow: var(--v-glow-accent);
+  transition: transform var(--v-dur) var(--v-ease),
+    filter var(--v-dur) var(--v-ease);
+}
+
+.action:hover {
+  filter: brightness(1.06);
+}
+
+.action:active {
+  transform: scale(0.94);
+}

@@ -1,0 +1,128 @@
+.base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--v-s-2);
+  border-radius: var(--v-r-pill);
+  font-size: var(--v-t-sm);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: transform var(--v-dur-fast) var(--v-ease),
+    background-color var(--v-dur) var(--v-ease),
+    border-color var(--v-dur) var(--v-ease),
+    filter var(--v-dur) var(--v-ease);
+}
+
+.base:active {
+  transform: scale(0.97);
+}
+
+.base[disabled],
+.base[aria-disabled="true"] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ---- Sizes ---- */
+.sm {
+  height: 34px;
+  padding-inline: var(--v-s-4);
+}
+
+.md {
+  height: 44px;
+  padding-inline: var(--v-s-5);
+}
+
+.lg {
+  height: 54px;
+  padding-inline: var(--v-s-6);
+  font-size: var(--v-t-body);
+}
+
+.block {
+  display: flex;
+  width: 100%;
+}
+
+/* ---- Variants ---- */
+.primary {
+  background: var(--v-accent);
+  color: var(--v-text-on-accent);
+}
+
+.primary:hover {
+  filter: brightness(1.06);
+}
+
+.secondary {
+  background: var(--v-surface-3);
+  color: var(--v-text);
+  border: 1px solid var(--v-line);
+}
+
+.secondary:hover {
+  border-color: var(--v-line-strong);
+}
+
+.ghost {
+  background: none;
+  color: var(--v-text-dim);
+  border: 1px solid var(--v-line);
+}
+
+.ghost:hover {
+  color: var(--v-text);
+  border-color: var(--v-line-strong);
+}
+
+.quiet {
+  background: none;
+  color: var(--v-text-dim);
+}
+
+.quiet:hover {
+  color: var(--v-text);
+}
+
+/* ---- Icon-only ---- */
+.icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: var(--v-r-pill);
+  background: var(--v-surface-glass);
+  border: 1px solid var(--v-line);
+  color: var(--v-text-dim);
+  transition: color var(--v-dur) var(--v-ease),
+    border-color var(--v-dur) var(--v-ease),
+    transform var(--v-dur-fast) var(--v-ease);
+}
+
+.icon:hover {
+  color: var(--v-text);
+  border-color: var(--v-line-strong);
+}
+
+.icon:active {
+  transform: scale(0.94);
+}
+
+.iconAccent {
+  background: var(--v-accent);
+  border-color: transparent;
+  color: var(--v-text-on-accent);
+}
+
+.iconAccent:hover {
+  color: var(--v-text-on-accent);
+  filter: brightness(1.06);
+}
+
+.iconLg {
+  width: 46px;
+  height: 46px;
+}

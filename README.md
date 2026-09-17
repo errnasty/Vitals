@@ -80,6 +80,9 @@ backend/          FastAPI + SQLAlchemy 2.0 + Alembic, uv-managed
     ai/           digest, OpenRouter client, grounding, coach
   alembic/        migrations
 frontend/         Next.js App Router (PWA)
+  app/            routes only - pages, layout, data fetching
+  design/         the UI template: tokens, both themes, primitives, style guide
+docs/             deployment runbook, local development, auth, design system
 docs/             deployment runbook, local development, auth, garmin, silver
 docker-compose.yml  local dev only
 ```
@@ -103,7 +106,26 @@ uv run vitals normalize
 ```
 
 See [docs/local-development.md](docs/local-development.md),
-[docs/auth.md](docs/auth.md) and [docs/deployment.md](docs/deployment.md).
+[docs/auth.md](docs/auth.md), [docs/deployment.md](docs/deployment.md) and
+[docs/design-system.md](docs/design-system.md).
+
+## Design
+
+The UI template lives in `frontend/design/` and is kept separate from
+application code on purpose: design work and the phase 3-12 feature branches
+never edit the same lines. The app's entire design surface is one `@import`, the
+theme-colour metadata in `layout.tsx`, and the components pages import from
+`@/design`.
+
+Dark by default with a lime accent; a light theme with a deep-green accent that
+clears WCAG AA, since lime on white is unreadable. Both palettes are defined
+once, in `frontend/design/tokens.css`. Set in Source Serif 4, self-hosted, for
+its tabular figures and optical-size axis.
+
+`npm run dev` and open `/design` for the living style guide: tokens, every
+primitive, and three reference screens, rendered from the same exports the app
+uses. See [frontend/design/README.md](frontend/design/README.md) for the rules
+and [docs/design-system.md](docs/design-system.md) for the merge policy.
 
 ## Notes
 

@@ -1,0 +1,187 @@
+.card {
+  position: relative;
+  border-radius: var(--v-r-xl);
+  background: var(--v-surface-1);
+  border: 1px solid var(--v-line);
+  padding: var(--v-s-5);
+  overflow: hidden;
+}
+
+/* A hairline of light along the top edge: the whole reason the dark cards read
+ * as raised rather than as holes cut in the canvas. */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--v-card-sheen) 25%,
+    var(--v-card-sheen) 75%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+.glass {
+  background: var(--v-surface-glass);
+  backdrop-filter: blur(16px);
+}
+
+.accent {
+  background: linear-gradient(
+    160deg,
+    var(--v-accent-soft),
+    var(--v-surface-1) 60%
+  );
+  border-color: var(--v-line-accent);
+}
+
+.flat {
+  background: none;
+  border-color: transparent;
+  padding-inline: 0;
+}
+
+.flat::before {
+  display: none;
+}
+
+.pad-sm {
+  padding: var(--v-s-4);
+}
+
+.pad-lg {
+  padding: var(--v-s-6);
+}
+
+.interactive {
+  display: block;
+  width: 100%;
+  text-align: left;
+  transition: border-color var(--v-dur) var(--v-ease),
+    transform var(--v-dur) var(--v-ease);
+}
+
+.interactive:hover {
+  border-color: var(--v-line-strong);
+}
+
+.interactive:active {
+  transform: scale(0.99);
+}
+
+/* ---- Card header ---- */
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--v-s-3);
+  margin-bottom: var(--v-s-4);
+}
+
+.headerText {
+  flex: 1;
+  min-width: 0;
+}
+
+.headerTitle {
+  font-size: var(--v-t-sm);
+  font-weight: 500;
+  color: var(--v-text);
+}
+
+.headerSub {
+  font-size: var(--v-t-xs);
+  color: var(--v-text-faint);
+  letter-spacing: 0.01em;
+}
+
+.headerIcon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--v-r-sm);
+  background: var(--v-surface-3);
+  color: var(--v-text-dim);
+  flex: 0 0 auto;
+}
+
+/* ---- Section header (sits between cards, not inside one) ---- */
+.section {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--v-s-3);
+  padding-block: var(--v-s-4) var(--v-s-1);
+}
+
+.sectionTitle {
+  font-size: var(--v-t-xs);
+  letter-spacing: var(--v-track-label);
+  text-transform: uppercase;
+  color: var(--v-text-faint);
+}
+
+.sectionAction {
+  font-size: var(--v-t-sm);
+  color: var(--v-accent);
+}
+
+/* ---- List row ---- */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--v-s-3);
+  width: 100%;
+  padding-block: var(--v-s-3);
+  text-align: left;
+}
+
+.row + .row {
+  border-top: 1px solid var(--v-line);
+}
+
+.rowIcon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--v-r-sm);
+  background: var(--v-surface-2);
+  color: var(--v-accent);
+  flex: 0 0 auto;
+}
+
+.rowBody {
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+
+.rowLabel {
+  display: block;
+  font-size: var(--v-t-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowMeta {
+  display: block;
+  font-size: var(--v-t-sm);
+  color: var(--v-text-faint);
+}
+
+.rowValue {
+  font-size: var(--v-t-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--v-text-dim);
+  flex: 0 0 auto;
+}
+
+.rowChevron {
+  color: var(--v-text-faint);
+  flex: 0 0 auto;
+}

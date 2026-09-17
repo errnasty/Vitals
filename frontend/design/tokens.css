@@ -1,0 +1,248 @@
+/*
+ * Vitals design tokens - the single source of truth for the visual language.
+ *
+ * Nothing outside this file hard-codes a colour, radius, duration or type size.
+ * Retheming the whole app is editing the values below and nothing else.
+ *
+ * TWO THEMES, ONE DEFINITION. Every themed value is written once, as
+ * `light-dark(<light>, <dark>)`. Light is not an inversion of dark: the lime
+ * accent is unreadable on white, so the light theme swaps it for a deep green of
+ * the same family. Every text colour in both themes clears WCAG AA against its
+ * own canvas and card surface.
+ *
+ * Which theme applies:
+ *   1. `data-theme="light"` or `"dark"` on <html> wins, whatever the OS says.
+ *      (It sets `color-scheme`, which is what light-dark() actually reads.)
+ *   2. Otherwise the OS preference decides.
+ *   3. Otherwise dark - including on any browser without light-dark(), which
+ *      gets the plain dark values from the block above the @supports rule.
+ */
+
+/* ---------------------------------------------------------------- shared -- */
+:root {
+  /* ---- Radii ---- */
+  --v-r-xs: 8px;
+  --v-r-sm: 12px;
+  --v-r-md: 16px;
+  --v-r-lg: 22px;
+  --v-r-xl: 28px;
+  --v-r-2xl: 34px;
+  --v-r-pill: 999px;
+
+  /* ---- Spacing: 4px base ---- */
+  --v-s-1: 4px;
+  --v-s-2: 8px;
+  --v-s-3: 12px;
+  --v-s-4: 16px;
+  --v-s-5: 20px;
+  --v-s-6: 24px;
+  --v-s-7: 32px;
+  --v-s-8: 40px;
+  --v-s-9: 56px;
+  --v-s-10: 72px;
+
+  /* ---- Type ----
+   * Numbers are the product, so the display sizes are tuned for digits: light
+   * weight, tight tracking, tabular figures (set in base.css).
+   *
+   * Source Serif 4 is loaded from design/fonts.css; the Fallback face is the
+   * metric-matched stand-in that prevents a reflow when the webfont arrives. */
+  --v-font: "Source Serif 4", "Source Serif 4 Fallback", "Times New Roman",
+    Times, Georgia, serif;
+  /* Split out so the big readouts can take a different face without touching
+   * anything else - and so the small uppercase labels could go back to a sans
+   * if the serif ever feels too soft at 10px. */
+  --v-font-display: var(--v-font);
+  --v-font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+  --v-t-display: 3.25rem;  /* 52px - the hero readout (a duration, a score) */
+  --v-t-h1: 2.125rem;      /* 34px */
+  --v-t-h2: 1.5rem;        /* 24px */
+  --v-t-h3: 1.125rem;      /* 18px */
+  --v-t-body: 0.9375rem;   /* 15px */
+  --v-t-sm: 0.8125rem;     /* 13px */
+  --v-t-xs: 0.6875rem;     /* 11px - uppercase labels only */
+
+  --v-track-tight: -0.012em;
+  --v-track-label: 0.09em;
+
+  /* ---- Motion ---- */
+  --v-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --v-dur-fast: 120ms;
+  --v-dur: 220ms;
+  --v-dur-slow: 480ms;
+
+  /* ---- Over media ----
+   * Text on the hero sits on a dark scrim in both themes, so it never follows
+   * the theme's text colour. */
+  --v-on-media: #f1f4ec;
+  --v-on-media-dim: #c6cbbe;
+  --v-media-scrim-top: rgba(9, 10, 9, 0.55);
+  --v-media-scrim-bottom: rgba(9, 10, 9, 0.92);
+
+  /* ---- Layout ----
+   * The app is a phone app first. On a wide screen it stays a single centred
+   * column rather than stretching into a dashboard it was never drawn as. */
+  --v-app-max: 460px;
+  --v-gutter: var(--v-s-5);
+  --v-navbar-h: 72px;
+  --v-safe-top: env(safe-area-inset-top, 0px);
+  --v-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ------------------------------------------------------- dark (fallback) -- */
+/* Also the real palette for browsers that do not support light-dark(). */
+:root {
+  color-scheme: dark;
+
+  /* ---- Canvas & surfaces ---- */
+  --v-bg:                   #090a09;
+  --v-bg-deep:              #050605;
+  --v-surface-1:            #121412;
+  --v-surface-2:            #1a1d19;
+  --v-surface-3:            #242822;
+  --v-surface-glass:        rgb(255 255 255 / 0.045);
+  --v-surface-glass-strong: rgb(255 255 255 / 0.075);
+  --v-card-sheen:           rgb(255 255 255 / 0.12);
+  --v-canvas-top:           rgb(255 255 255 / 0.06);
+  --v-canvas-floor:         rgb(201 247 63 / 0.05);
+
+  /* ---- Lines ---- */
+  --v-line:                 rgb(255 255 255 / 0.07);
+  --v-line-strong:          rgb(255 255 255 / 0.13);
+  --v-line-accent:          rgb(201 247 63 / 0.35);
+
+  /* ---- Text -- every value clears WCAG AA against its theme's canvas and card ---- */
+  --v-text:                 #f1f4ec;
+  --v-text-dim:             #a8afa0;
+  --v-text-faint:           #7c837a;
+  --v-text-on-accent:       #0a0c07;
+
+  /* ---- Accent -- lime on the dark canvas, a deep green of the same family on the light one ---- */
+  --v-accent:               #c9f73f;
+  --v-accent-bright:        #dcff6b;
+  --v-accent-deep:          #9ac71f;
+  --v-accent-soft:          rgb(201 247 63 / 0.14);
+  --v-accent-softer:        rgb(201 247 63 / 0.07);
+
+  /* ---- Semantic ---- */
+  --v-ok:                   #86e0a0;
+  --v-warn:                 #f5cc5c;
+  --v-bad:                  #ff7a63;
+  --v-info:                 #79b8f5;
+
+  /* ---- Data series -- ordered, never re-ordered (charts key off position) ---- */
+  --v-series-1:             #c9f73f;
+  --v-series-2:             #79b8f5;
+  --v-series-3:             #f5cc5c;
+  --v-series-4:             #b493f7;
+  --v-series-5:             #ff9f7a;
+  --v-track:                rgb(255 255 255 / 0.08);
+
+  /* ---- Chrome ---- */
+  --v-nav-bg:               rgb(20 23 20 / 0.82);
+
+  /* ---- Map ---- */
+  --v-map-core:             #161915;
+  --v-map-edge:             #0b0c0a;
+  --v-map-grid:             rgb(255 255 255 / 0.05);
+  --v-map-street:           rgb(255 255 255 / 0.08);
+  --v-map-casing:           rgb(9 10 9 / 0.9);
+  --v-map-scrim-top:        rgb(9 10 9 / 0.5);
+  --v-map-scrim-bottom:     rgb(9 10 9 / 0.75);
+
+  /* ---- Shadow & glow colours -- composed into the shadow tokens below ---- */
+  --v-glow:                 rgb(201 247 63 / 0.38);
+  --v-glow-ring:            rgb(201 247 63 / 0.25);
+  --v-shadow-1:             rgb(0 0 0 / 0.4);
+  --v-shadow-2:             rgb(0 0 0 / 0.65);
+  --v-shadow-3:             rgb(0 0 0 / 0.8);
+}
+
+/* ------------------------------------------------------------ both themes -- */
+@supports (color: light-dark(#000, #fff)) {
+  :root {
+    color-scheme: light dark;
+
+    /* ---- Canvas & surfaces ---- */
+    --v-bg:                   light-dark(#f6f7f2, #090a09);
+    --v-bg-deep:              light-dark(#eceee4, #050605);
+    --v-surface-1:            light-dark(#ffffff, #121412);
+    --v-surface-2:            light-dark(#f0f2ea, #1a1d19);
+    --v-surface-3:            light-dark(#e5e8dc, #242822);
+    --v-surface-glass:        light-dark(rgb(255 255 255 / 0.72), rgb(255 255 255 / 0.045));
+    --v-surface-glass-strong: light-dark(rgb(255 255 255 / 0.9), rgb(255 255 255 / 0.075));
+    --v-card-sheen:           light-dark(rgb(255 255 255 / 0), rgb(255 255 255 / 0.12));
+    --v-canvas-top:           light-dark(rgb(255 255 255 / 0.9), rgb(255 255 255 / 0.06));
+    --v-canvas-floor:         light-dark(rgb(61 122 18 / 0.05), rgb(201 247 63 / 0.05));
+
+    /* ---- Lines ---- */
+    --v-line:                 light-dark(rgb(22 28 16 / 0.1), rgb(255 255 255 / 0.07));
+    --v-line-strong:          light-dark(rgb(22 28 16 / 0.2), rgb(255 255 255 / 0.13));
+    --v-line-accent:          light-dark(rgb(61 122 18 / 0.35), rgb(201 247 63 / 0.35));
+
+    /* ---- Text -- every value clears WCAG AA against its theme's canvas and card ---- */
+    --v-text:                 light-dark(#161b10, #f1f4ec);
+    --v-text-dim:             light-dark(#4f5646, #a8afa0);
+    --v-text-faint:           light-dark(#6a7160, #7c837a);
+    --v-text-on-accent:       light-dark(#ffffff, #0a0c07);
+
+    /* ---- Accent -- lime on the dark canvas, a deep green of the same family on the light one ---- */
+    --v-accent:               light-dark(#3d7a12, #c9f73f);
+    --v-accent-bright:        light-dark(#4e9418, #dcff6b);
+    --v-accent-deep:          light-dark(#2a5a0a, #9ac71f);
+    --v-accent-soft:          light-dark(rgb(61 122 18 / 0.12), rgb(201 247 63 / 0.14));
+    --v-accent-softer:        light-dark(rgb(61 122 18 / 0.06), rgb(201 247 63 / 0.07));
+
+    /* ---- Semantic ---- */
+    --v-ok:                   light-dark(#1d7a45, #86e0a0);
+    --v-warn:                 light-dark(#9a6400, #f5cc5c);
+    --v-bad:                  light-dark(#c0392b, #ff7a63);
+    --v-info:                 light-dark(#1a6aa8, #79b8f5);
+
+    /* ---- Data series -- ordered, never re-ordered (charts key off position) ---- */
+    --v-series-1:             light-dark(#3d7a12, #c9f73f);
+    --v-series-2:             light-dark(#1a6aa8, #79b8f5);
+    --v-series-3:             light-dark(#9a6400, #f5cc5c);
+    --v-series-4:             light-dark(#6b4fbf, #b493f7);
+    --v-series-5:             light-dark(#c4581f, #ff9f7a);
+    --v-track:                light-dark(rgb(22 28 16 / 0.1), rgb(255 255 255 / 0.08));
+
+    /* ---- Chrome ---- */
+    --v-nav-bg:               light-dark(rgb(255 255 255 / 0.88), rgb(20 23 20 / 0.82));
+
+    /* ---- Map ---- */
+    --v-map-core:             light-dark(#eef0e6, #161915);
+    --v-map-edge:             light-dark(#e1e4d7, #0b0c0a);
+    --v-map-grid:             light-dark(rgb(22 28 16 / 0.07), rgb(255 255 255 / 0.05));
+    --v-map-street:           light-dark(rgb(22 28 16 / 0.11), rgb(255 255 255 / 0.08));
+    --v-map-casing:           light-dark(rgb(255 255 255 / 0.95), rgb(9 10 9 / 0.9));
+    --v-map-scrim-top:        light-dark(rgb(246 247 242 / 0.45), rgb(9 10 9 / 0.5));
+    --v-map-scrim-bottom:     light-dark(rgb(246 247 242 / 0.65), rgb(9 10 9 / 0.75));
+
+    /* ---- Shadow & glow colours -- composed into the shadow tokens below ---- */
+    --v-glow:                 light-dark(rgb(61 122 18 / 0.2), rgb(201 247 63 / 0.38));
+    --v-glow-ring:            light-dark(rgb(61 122 18 / 0.28), rgb(201 247 63 / 0.25));
+    --v-shadow-1:             light-dark(rgb(22 28 16 / 0.08), rgb(0 0 0 / 0.4));
+    --v-shadow-2:             light-dark(rgb(22 28 16 / 0.22), rgb(0 0 0 / 0.65));
+    --v-shadow-3:             light-dark(rgb(22 28 16 / 0.28), rgb(0 0 0 / 0.8));
+  }
+}
+
+/* ------------------------------------------------------------- overrides -- */
+/* `color-scheme` is the switch; the tokens above follow it automatically. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* --------------------------------------------------- composed elevation -- */
+:root {
+  --v-shadow-sm: 0 1px 2px var(--v-shadow-1);
+  --v-shadow-md: 0 8px 24px -8px var(--v-shadow-2);
+  --v-shadow-lg: 0 24px 60px -18px var(--v-shadow-3);
+  --v-glow-accent: 0 0 0 1px var(--v-glow-ring), 0 8px 32px -6px var(--v-glow);
+}

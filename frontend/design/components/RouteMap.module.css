@@ -1,0 +1,90 @@
+.wrap {
+  position: relative;
+  width: 100%;
+  border-radius: var(--v-r-xl);
+  overflow: hidden;
+  background:
+    radial-gradient(90% 70% at 50% 40%, var(--v-map-core), var(--v-map-edge) 75%);
+  border: 1px solid var(--v-line);
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* The street grid is context, not information: it should be barely there. */
+.grid {
+  stroke: var(--v-map-grid);
+  stroke-width: 1;
+}
+
+.street {
+  stroke: var(--v-map-street);
+  stroke-width: 6;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.route {
+  fill: none;
+  stroke: var(--v-accent);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 10px var(--v-glow));
+}
+
+.routeCasing {
+  fill: none;
+  stroke: var(--v-map-casing);
+  stroke-width: 11;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.marker {
+  fill: var(--v-surface-1);
+  stroke: var(--v-accent);
+  stroke-width: 3;
+}
+
+.markerEnd {
+  fill: var(--v-accent);
+  stroke: var(--v-surface-1);
+  stroke-width: 3;
+}
+
+.label {
+  fill: var(--v-text-faint);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Fades the map into the card above and the stats below it. */
+.scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    var(--v-map-scrim-top),
+    transparent 22%,
+    transparent 70%,
+    var(--v-map-scrim-bottom)
+  );
+}
+
+.pin {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--v-r-pill);
+  background: var(--v-accent);
+  color: var(--v-text-on-accent);
+  box-shadow: var(--v-glow-accent);
+}

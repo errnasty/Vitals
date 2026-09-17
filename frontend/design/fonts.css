@@ -1,0 +1,56 @@
+/*
+ * Source Serif 4, self-hosted.
+ *
+ * A transitional serif in the Times New Roman lineage, but drawn for screens
+ * rather than for hot metal. Two things make it the right one here rather than
+ * Times itself:
+ *
+ *   - It has real tabular figures (`tnum`). Most of this UI is numbers, and
+ *     base.css asks for tabular digits; a face without them ignores that
+ *     silently and the readouts jitter as values change.
+ *   - It has an optical-size axis, so the 10px uppercase labels get sturdier
+ *     stems while the 52px readouts get finer ones. That is the difference
+ *     between a serif that survives at label sizes and one that goes to mush.
+ *
+ * Committed under `design/fonts/` rather than fetched by `next/font/google`, so
+ * a build never depends on reaching Google and the face is part of the design
+ * template like everything else. One variable file per subset covers weights
+ * 200-900 and optical sizes 8-60.
+ */
+
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("./fonts/SourceSerif4-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("./fonts/SourceSerif4-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/*
+ * A metric-matched stand-in for the swap period, built on Times New Roman —
+ * which is the closest face already on the machine. The overrides are computed
+ * from the two fonts' own metrics (x-height ratio 0.475 vs 0.447), so the first
+ * paint and the webfont paint occupy the same box and the page does not jump.
+ */
+@font-face {
+  font-family: "Source Serif 4 Fallback";
+  src: local("Times New Roman"), local("Times"), local("Liberation Serif");
+  ascent-override: 97.55%;
+  descent-override: 31.54%;
+  line-gap-override: 0%;
+  size-adjust: 106.2%;
+}

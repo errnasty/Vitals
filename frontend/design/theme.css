@@ -1,0 +1,7 @@
+/*
+ * The one stylesheet the app loads. `app/globals.css` imports this file and
+ * nothing else, which is what keeps the app's CSS surface to a single line.
+ */
+@import "./fonts.css";
+@import "./tokens.css";
+@import "./base.css";

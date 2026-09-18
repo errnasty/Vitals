@@ -69,6 +69,10 @@ services:
     environment:
       API_URL: http://api:8000
       NODE_ENV: production
+      # Every fetch happens server-side, so the token lives in this process and the
+      # browser never holds a credential. Mint one with `vitals auth token` and put it
+      # in the root .env; without it the screens say so rather than failing silently.
+      VITALS_API_TOKEN: ${VITALS_API_TOKEN:-}
     ports:
       - "3000:3000"
     depends_on:

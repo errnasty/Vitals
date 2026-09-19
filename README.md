@@ -9,12 +9,14 @@ every number; the model only selects, prioritises, explains and personalises.
 
 ## Status
 
-**Phase 6 — the dashboard.** Three server-rendered screens — Today, Breakdown and
-Trends — drawn entirely with the design system, reading one endpoint per screen. Every
-value arrives already formatted, so there is not a single calculation in the frontend.
-See [docs/dashboard.md](docs/dashboard.md).
+**Phase 7 — the daily brief.** Two or three sentences a day, written from a compact
+digest of numbers Python already computed, with **every number in them checked against
+that digest before they are stored**. A conversion the model performed itself — `7h 16m`
+written as "7.3 hours" — is rejected, retried once with the fault named, and failing
+that the brief is composed in Python instead. It works with no API key at all.
+See [docs/ai.md](docs/ai.md).
 
-Phases 0-6 are complete in code and covered by CI, and deployed on Railway. Still
+Phases 0-7 are complete in code and covered by CI, and deployed on Railway. Still
 pending: a real `vitals garmin login`, and the FIT parsing half of phase 3.
 
 | Phase | Deliverable | State |
@@ -27,7 +29,7 @@ pending: a real `vitals garmin login`, and the FIT parsing half of phase 3.
 | 4 | Analytics engine (training load, recovery, sleep, body, longevity) | **code complete** |
 | 5 | Vitals Score: pillars, coverage, calibration, contributions waterfall | **code complete** |
 | 6 | Next.js dashboard: Today, Breakdown, Trends | **code complete** |
-| 7 | AI: digest, OpenRouter, grounding validator, quiet daily brief | |
+| 7 | AI: digest, OpenRouter, grounding validator, quiet daily brief | **code complete** |
 | 8 | AI coach: response profile, ranked interventions, N-of-1 experiments | |
 | 9 | Agentic Q&A, pgvector similar-days, journal fusion | |
 | 10 | Apple Health push ingest | |
@@ -82,7 +84,7 @@ backend/          FastAPI + SQLAlchemy 2.0 + Alembic, uv-managed
 frontend/
   app/            the product's screens — feature work only
   design/         the UI template: tokens, both themes, primitives, style guide
-docs/             deployment, local dev, auth, garmin, silver, analytics, score,
+docs/             deployment, local dev, auth, garmin, silver, analytics, score, ai,
                   dashboard, design-system
 docker-compose.yml  local dev only
 ```

@@ -294,3 +294,99 @@ async def test_trends_refuses_an_absurd_window(client: ClientFactory) -> None:
     async with client() as http:
         response = await http.get("/trends?days=9999", headers=_auth())
     assert response.status_code == 422
+
+
+# ── the daily brief ─────────────────────────────────────────────────────────────
+
+
+async def _seed_brief(session: AsyncSession, *, body: str = "Balanced today at 70.") -> None:
+    from vitals.db.models import SOURCE_PYTHON, DailyBrief
+
+    session.add(
+        DailyBrief(
+            user_id=USER_ID,
+            calendar_date=DAY,
+            body=body,
+            source=SOURCE_PYTHON,
+            model=None,
+            digest_fingerprint="0" * 32,
+            grounded=True,
+            attempts=0,
+            prompt_tokens=0,
+            completion_tokens=0,
+        )
+    )
+    await session.commit()
+
+
+async def test_today_carries_the_brief_so_the_screen_is_still_one_round_trip(
+    client: ClientFactory, pg_session: AsyncSession
+) -> None:
+    await _seed(pg_session)
+    await _seed_brief(pg_session)
+
+    async with client() as http:
+        body = (await http.get("/today", headers=_auth())).json()
+
+    assert body["brief"]["body"] == "Balanced today at 70."
+    assert body["brief"]["written_by_model"] is False
+    assert body["brief"]["date"] == DAY.isoformat()
+
+
+async def test_today_without_a_brief_says_so_rather_than_failing(
+    client: ClientFactory, pg_session: AsyncSession
+) -> None:
+    """Nothing about the dashboard depends on a model having run."""
+    await _seed(pg_session)
+
+    async with client() as http:
+        response = await http.get("/today", headers=_auth())
+
+    assert response.status_code == 200
+    assert response.json()["brief"] is None
+
+
+async def test_the_brief_endpoint_reads_one_back(
+    client: ClientFactory, pg_session: AsyncSession
+) -> None:
+    await _seed(pg_session)
+    await _seed_brief(pg_session)
+
+    async with client() as http:
+        response = await http.get("/brief", headers=_auth())
+
+    assert response.status_code == 200
+    assert response.json()["source"] == "python"
+
+
+async def test_a_day_with_no_brief_is_a_404_not_an_invention(
+    client: ClientFactory, pg_session: AsyncSession
+) -> None:
+    await _seed(pg_session)
+    await _seed_brief(pg_session)
+
+    async with client() as http:
+        response = await http.get(
+            "/brief", params={"day": (DAY - timedelta(days=3)).isoformat()}, headers=_auth()
+        )
+
+    assert response.status_code == 404
+
+
+async def test_reading_the_brief_never_calls_a_model(
+    client: ClientFactory, pg_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A page load must not spend money or wait on a third party."""
+
+    async def explode(
+        self, url, **kwargs
+    ):  # pragma: no cover - the assertion is that it never runs
+        raise AssertionError("the API called a model")
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", explode)
+    await _seed(pg_session)
+    await _seed_brief(pg_session)
+
+    async with client() as http:
+        assert (await http.get("/today", headers=_auth())).status_code == 200
+        assert (await http.get("/brief", headers=_auth())).status_code == 200

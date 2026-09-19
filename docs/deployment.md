@@ -150,10 +150,17 @@ Service-specific:
 
 ```
 api:  CORS_ORIGINS=https://<web domain, or http://localhost:3000 while it runs locally>
+sync: OPENROUTER_API_KEY=<key>            # optional — see below
 web:  API_URL=https://<api domain>
       VITALS_API_TOKEN=<vitals auth token --days 90>   # server-side only
       NEXT_TELEMETRY_DISABLED=1           # telemetry is outbound traffic; it blocks sleep
 ```
+
+`OPENROUTER_API_KEY` belongs on `sync` alone, not at project level. The cron is the
+only service that writes a daily brief; the `api` only reads the stored row, and giving
+a public-facing service a key it never uses is a credential in one more place than it
+needs to be. Unset is a supported state — the brief is then composed in Python, which
+is plainer and never wrong. See [ai.md](ai.md).
 
 Generate the two secrets:
 

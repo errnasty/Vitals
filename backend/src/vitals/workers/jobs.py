@@ -20,6 +20,7 @@ from vitals.db.session import dispose_engine, get_sessionmaker
 from vitals.ingest.pipeline import NoSuchUser, resolve_user, run_backfill, run_incremental
 from vitals.logging import get_logger
 from vitals.normalize import normalize as normalize_silver
+from vitals.score import score as score_day
 from vitals.sources.base import SyncOutcome
 
 log = get_logger(__name__)
@@ -28,11 +29,11 @@ log = get_logger(__name__)
 async def run_sync(
     source: str = "garmin", *, days: int = 7, email: str | None = None, normalize: bool = True
 ) -> SyncOutcome:
-    """Incremental sync, then rebuild silver and gold over the same window.
+    """Incremental sync, then rebuild silver, gold and the score over the same window.
 
-    All three belong together: a sync that fills bronze and leaves the layers above it
+    All four belong together: a sync that fills bronze and leaves the layers above it
     behind means the dashboard keeps serving last week's numbers with no error
-    anywhere to explain why. Both recomputes are idempotent and cheap next to the
+    anywhere to explain why. Every recompute is idempotent and cheap next to the
     network round trips the sync just made, so the cron does the lot by default.
     """
     if source != "garmin":
@@ -54,8 +55,9 @@ async def _refresh_derived(
     re-fetched. A normalizer or a formula blowing up must not turn a successful
     capture into a failed run — either recompute can be re-run by hand at any time.
 
-    Gold only runs if silver succeeded: deriving a training load from a half-written
-    silver layer would produce a number that looks fine and is wrong.
+    Each layer only runs if the one below it succeeded: a training load derived from
+    a half-written silver layer, or a score composed from a half-written gold one,
+    produces a number that looks fine and is wrong.
     """
     try:
         user = await resolve_user(session, email=email)
@@ -84,6 +86,14 @@ async def _refresh_derived(
         return
 
     log.info("sync.gold_refreshed", days=gold.days, rows=gold.rows)
+
+    try:
+        scored = await score_day(session, user_id=user.id, start=start)
+    except Exception as exc:  # noqa: BLE001 - reported, never fatal to the sync
+        log.error("sync.score_failed", error=f"{type(exc).__name__}: {exc}")
+        return
+
+    log.info("sync.score_refreshed", scored=scored.scored, trusted=scored.trusted)
 
 
 async def run_history(*, start: date, end: date, email: str | None = None) -> SyncOutcome:

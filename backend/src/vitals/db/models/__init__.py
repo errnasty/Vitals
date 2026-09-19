@@ -10,6 +10,7 @@ from vitals.db.models.credential import GARMIN_PASSWORD, GARMIN_TOKENS, Credenti
 from vitals.db.models.derived import DerivedDaily
 from vitals.db.models.metric import MetricDaily, MetricSample
 from vitals.db.models.raw_payload import RawPayload
+from vitals.db.models.score import ScoreContribution, ScorePillar, VitalsScore
 from vitals.db.models.sleep import SleepSession
 from vitals.db.models.source_connection import SourceConnection
 from vitals.db.models.sync_run import SyncRun
@@ -25,7 +26,10 @@ __all__ = [
     "MetricDaily",
     "MetricSample",
     "RawPayload",
+    "ScoreContribution",
+    "ScorePillar",
     "SleepSession",
     "SourceConnection",
     "SyncRun",
+    "VitalsScore",
 ]

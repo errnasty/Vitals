@@ -9,14 +9,12 @@ every number; the model only selects, prioritises, explains and personalises.
 
 ## Status
 
-**Phase 4 — the analytics engine.** Five pure modules turn silver into the numbers that
-mean something: training load and form, recovery against your own baseline, sleep debt
-and regularity, body trends, and the longevity markers with real mortality evidence
-behind them. Every derived row carries its own **coverage**, so a fitness figure built
-from six days is never mistaken for one built from six weeks.
-See [docs/analytics.md](docs/analytics.md).
+**Phase 6 — the dashboard.** Three server-rendered screens — Today, Breakdown and
+Trends — drawn entirely with the design system, reading one endpoint per screen. Every
+value arrives already formatted, so there is not a single calculation in the frontend.
+See [docs/dashboard.md](docs/dashboard.md).
 
-Phases 0-4 are complete in code and covered by CI, and deployed on Railway. Still
+Phases 0-6 are complete in code and covered by CI, and deployed on Railway. Still
 pending: a real `vitals garmin login`, and the FIT parsing half of phase 3.
 
 | Phase | Deliverable | State |
@@ -27,8 +25,8 @@ pending: a real `vitals garmin login`, and the FIT parsing half of phase 3.
 | 3 | Normalizers → canonical silver model | **code complete** |
 | 3b | FIT download, storage and parsing | |
 | 4 | Analytics engine (training load, recovery, sleep, body, longevity) | **code complete** |
-| 5 | Vitals Score: pillars, coverage, calibration, contributions waterfall | |
-| 6 | Next.js dashboard (PWA) | |
+| 5 | Vitals Score: pillars, coverage, calibration, contributions waterfall | **code complete** |
+| 6 | Next.js dashboard: Today, Breakdown, Trends | **code complete** |
 | 7 | AI: digest, OpenRouter, grounding validator, quiet daily brief | |
 | 8 | AI coach: response profile, ranked interventions, N-of-1 experiments | |
 | 9 | Agentic Q&A, pgvector similar-days, journal fusion | |
@@ -78,13 +76,14 @@ backend/          FastAPI + SQLAlchemy 2.0 + Alembic, uv-managed
     ingest/       raw store (bronze), pipeline
     normalize/    canonical vocabulary, per-endpoint normalizers, runner, resolver
     analytics/    maths, derived vocabulary, five modules, engine
+    score/        curves, the four pillars, composition, engine
     ai/           digest, OpenRouter client, grounding, coach
   alembic/        migrations
-frontend/         Next.js App Router (PWA)
-  app/            routes only - pages, layout, data fetching
+frontend/
+  app/            the product's screens — feature work only
   design/         the UI template: tokens, both themes, primitives, style guide
-docs/             deployment runbook, local development, auth, design system
-docs/             deployment, local dev, auth, garmin, silver, analytics, design
+docs/             deployment, local dev, auth, garmin, silver, analytics, score,
+                  dashboard, design-system
 docker-compose.yml  local dev only
 ```
 
@@ -105,6 +104,8 @@ curl -H "Authorization: Bearer $(uv run vitals auth token --email you@example.co
 # once bronze holds anything, build the layers above it (both safe to re-run):
 uv run vitals normalize    # bronze -> silver
 uv run vitals recompute    # silver -> gold
+uv run vitals score        # gold -> the Vitals Score
+uv run vitals explain      # the waterfall behind the latest day
 ```
 
 See [docs/local-development.md](docs/local-development.md),

@@ -1,5 +1,84 @@
 # Local development
 
+## Running the whole thing
+
+Five steps, and the third is the one people miss.
+
+**1. Configuration, once.** Everything reads a single `.env` at the repository root —
+the CLI, the API and the sync job all find it, so there is nothing to re-export per
+shell.
+
+```bash
+cp .env.example .env
+```
+
+Fill in three values:
+
+```bash
+DATABASE_URL=postgresql+asyncpg://vitals:vitals@localhost:5432/vitals
+VITALS_ALLOWED_EMAILS=you@example.com
+# python -c "import secrets; print(secrets.token_urlsafe(48))"
+VITALS_AUTH_JWT_SECRET=...
+# python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+VITALS_ENCRYPTION_KEY=...
+```
+
+To work against the deployed database instead of a local one, put Railway's
+`DATABASE_PUBLIC_URL` in `DATABASE_URL` and skip step 2. One backfill then lands where
+the cron will keep it fresh, rather than in a local database you would have to redo.
+
+**2. Database and API.**
+
+```bash
+docker compose up -d db
+cd backend && uv sync --all-groups
+uv run alembic upgrade head
+uv run vitals doctor                 # everything should be PASS or a phase-7 WARN
+uv run uvicorn vitals.api.main:app --reload
+```
+
+**3. Sign in once — this is the step that is easy to miss.**
+
+Nothing else works until an `app_user` row exists, because identity comes from an
+authenticated request and never from a sync command. Skipping it is why a freshly
+deployed cron fails with `no accounts exist yet`.
+
+```bash
+TOKEN=$(uv run vitals auth token --email you@example.com --days 90)
+curl -H "Authorization: Bearer $TOKEN" localhost:8000/auth/me
+```
+
+Keep that token: the frontend uses it in step 5.
+
+**4. Connect Garmin and pull the history.** Password and MFA are prompted; this is the
+only command that touches Garmin's SSO, and it runs from your machine rather than the
+cloud. See [garmin.md](garmin.md).
+
+```bash
+uv run vitals garmin login --email you@garmin-account
+uv run vitals garmin test
+uv run vitals backfill --start 2019-01-01 --dry-run   # ~320 requests for 7 years
+uv run vitals backfill --start 2019-01-01             # ~15 minutes, governed
+uv run vitals normalize && uv run vitals recompute && uv run vitals score
+```
+
+**5. The dashboard.**
+
+```bash
+cd frontend
+npm install
+cat > .env.local <<EOF
+API_URL=http://localhost:8000
+VITALS_API_TOKEN=$TOKEN
+EOF
+npm run dev                          # http://localhost:3000
+```
+
+Every fetch happens on the server, so the token stays in the web process and the
+browser never holds a credential. Before step 4 the screens say so in words — *"No data
+yet — connect Garmin and run a sync"* — rather than rendering a convincing row of
+dashes.
+
 ## Backend
 
 ```bash
@@ -71,9 +150,12 @@ one `pytest` away from losing it.
 
 ```bash
 cd frontend
-npm install
-npm run dev                          # http://localhost:3000, expects API_URL
+npm run dev                          # needs API_URL and VITALS_API_TOKEN in .env.local
+npm run build && npx tsc --noEmit    # what CI runs
 ```
+
+`/design` renders the style guide from the same exports the app imports, which is the
+fastest way to see a token change land on every primitive at once.
 
 ## Everything at once
 
@@ -81,6 +163,9 @@ npm run dev                          # http://localhost:3000, expects API_URL
 docker compose up --build            # db + migrate + api + web
 docker compose run --rm sync         # the cron job, one-shot, as it runs on Railway
 ```
+
+The `web` container reads `VITALS_API_TOKEN` from the root `.env`, so put the token
+from step 3 there before bringing the stack up.
 
 The compose file uses the same Dockerfiles and start commands as Railway, so a local
 pass means something about the deployed shape.

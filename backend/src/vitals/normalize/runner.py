@@ -30,6 +30,7 @@ from sqlalchemy import Select, and_, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from vitals.db.bulk import chunked
 from vitals.db.models import Activity, MetricDaily, MetricSample, RawPayload, SleepSession
 from vitals.logging import get_logger
 from vitals.normalize import canonical as c
@@ -216,15 +217,18 @@ class SilverWriter:
         # Everything but the natural key is refreshed: a recompute after a normalizer
         # fix must be able to *change* a value, not just fill in a missing one.
         updatable = {k: v for k, v in rows[0].items() if k not in ("id", "user_id")}
-        statement = (
-            pg_insert(model)
-            .values(rows)
-            .on_conflict_do_update(
-                constraint=constraint,
-                set_={k: getattr(pg_insert(model).excluded, k) for k in updatable},
+        # A single page of intraday payloads is thousands of sample rows, which is
+        # well past what one statement can bind.
+        for group in chunked(rows):
+            statement = (
+                pg_insert(model)
+                .values(group)
+                .on_conflict_do_update(
+                    constraint=constraint,
+                    set_={k: getattr(pg_insert(model).excluded, k) for k in updatable},
+                )
             )
-        )
-        await self._session.execute(statement)
+            await self._session.execute(statement)
         return len(rows)
 
 

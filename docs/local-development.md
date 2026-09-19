@@ -60,7 +60,13 @@ uv run vitals garmin test
 uv run vitals backfill --start 2019-01-01 --dry-run   # ~320 requests for 7 years
 uv run vitals backfill --start 2019-01-01             # ~15 minutes, governed
 uv run vitals normalize && uv run vitals recompute && uv run vitals score
+uv run vitals brief                                   # the day's note
 ```
+
+`vitals brief` needs no API key. Without `OPENROUTER_API_KEY` it composes the note in
+Python from the same ranked signals a model would have been given — plainer, and never
+wrong. Add the key when you want it written as prose; `vitals brief --digest` shows
+exactly what the model would be handed, and writes nothing. See [ai.md](ai.md).
 
 **5. The dashboard.**
 

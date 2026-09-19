@@ -151,3 +151,44 @@ async def test_the_metric_written_is_the_canonical_one(
     row = await pg_session.scalar(select(MetricDaily))
     assert row is not None
     assert (row.metric, row.value, row.unit) == (c.RESTING_HR, 48.0, "bpm")
+
+
+async def test_the_brief_is_written_last(
+    pg_session: AsyncSession, pg_user: AppUser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """It is the only step that can spend money, so it runs after everything it describes."""
+    order: list[str] = []
+
+    for name in ("normalize_silver", "recompute_gold", "score_day", "write_brief"):
+        original = getattr(jobs, name)
+
+        def wrapper(*args: Any, _name: str = name, _fn: Any = original, **kwargs: Any) -> Any:
+            order.append(_name)
+            return _fn(*args, **kwargs)
+
+        monkeypatch.setattr(jobs, name, wrapper)
+
+    await _seed(pg_session, pg_user, day=datetime.now(UTC).date() - timedelta(days=1))
+    _wire(monkeypatch, pg_session, SyncOutcome(status=SUCCESS, stored=1))
+
+    await jobs.run_sync(days=7)
+
+    assert order == ["normalize_silver", "recompute_gold", "score_day", "write_brief"]
+
+
+async def test_a_broken_brief_does_not_fail_the_sync(
+    pg_session: AsyncSession, pg_user: AppUser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bronze is already captured by this point, and it is the copy that cannot be refetched."""
+
+    async def explode(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("the model layer fell over")
+
+    monkeypatch.setattr(jobs, "write_brief", explode)
+    await _seed(pg_session, pg_user, day=datetime.now(UTC).date() - timedelta(days=1))
+    _wire(monkeypatch, pg_session, SyncOutcome(status=SUCCESS, stored=1))
+
+    outcome = await jobs.run_sync(days=7)
+
+    assert outcome.status == SUCCESS
+    assert await _daily_rows(pg_session) == 1

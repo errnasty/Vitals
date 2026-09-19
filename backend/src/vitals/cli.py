@@ -101,11 +101,12 @@ async def _doctor() -> int:
             # A key that does not parse means every stored credential is unreadable,
             # which surfaces as a mysterious re-auth loop if it is not caught here.
             line(BAD, "VITALS_ENCRYPTION_KEY", "set but not a valid Fernet key")
-    line(
-        OK if settings.openrouter_api_key else WARN,
-        "OPENROUTER_API_KEY",
-        "set" if settings.openrouter_api_key else "unset (required from phase 7)",
-    )
+    if settings.ai_configured:
+        line(OK, "OPENROUTER_API_KEY", f"set, model {settings.ai_model}")
+    else:
+        # Not a failure: the daily brief composes itself in Python without a model,
+        # so an unconfigured deployment loses the prose and keeps every fact.
+        line(WARN, "OPENROUTER_API_KEY", "unset - briefs will be composed in Python")
 
     typer.echo("")
     typer.echo("auth")
@@ -759,6 +760,99 @@ def explain(
 
             typer.echo("")
             typer.echo(f"{'total':<14}{sum(line.effect for line in lines):>6.2f}")
+        return 0
+
+    async def _wrapped() -> int:
+        try:
+            return await _run()
+        finally:
+            await dispose_engine()
+
+    raise typer.Exit(asyncio.run(_wrapped()))
+
+
+@app.command()
+def brief(
+    day: str | None = typer.Option(None, "--day", help="Day to write up (default: the latest)"),
+    email: str | None = typer.Option(None, "--email", help="Account to write up"),
+    force: bool = typer.Option(False, "--force", help="Rewrite even if the day is unchanged"),
+    show_digest: bool = typer.Option(
+        False, "--digest", help="Print the digest the model is shown, and write nothing"
+    ),
+) -> None:
+    """Write the day's brief, or show the digest it would be written from.
+
+    Re-running this on an unchanged day costs nothing: the brief is keyed on a hash of
+    the digest, so it is read back rather than regenerated. `--force` overrides that,
+    which is what you want after editing the prompt.
+
+    With no OPENROUTER_API_KEY the brief is composed in Python from the same ranked
+    signals a model would have been given. It is plainer, and it is never wrong.
+    """
+    configure_logging()
+    try:
+        when = date.fromisoformat(day) if day else None
+    except ValueError as exc:
+        typer.secho(f"bad date: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+    async def _run() -> int:
+        from vitals.ai import brief as ai
+        from vitals.ai.digest import load as load_digest
+        from vitals.db.models import SOURCE_MODEL
+        from vitals.ingest.pipeline import NoSuchUser, resolve_user
+
+        async with get_sessionmaker()() as session:
+            try:
+                user = await resolve_user(session, email=email)
+            except NoSuchUser as exc:
+                typer.secho(str(exc), fg=typer.colors.RED, err=True)
+                return 1
+
+            if show_digest:
+                digest = await load_digest(session, user_id=user.id, day=when)
+                if digest is None:
+                    typer.secho(
+                        "no score for that day - run `vitals score`", fg=typer.colors.YELLOW
+                    )
+                    return 1
+                typer.echo(digest.render())
+                typer.echo("")
+                typer.secho(f"fingerprint {digest.fingerprint}", fg=typer.colors.BRIGHT_BLACK)
+                return 0
+
+            result = await ai.generate(session, user_id=user.id, day=when, force=force)
+            if result is None:
+                typer.secho("no score for that day - run `vitals score`", fg=typer.colors.YELLOW)
+                return 1
+
+            typer.echo("")
+            typer.echo(result.body)
+            typer.echo("")
+
+            written = "model" if result.source == SOURCE_MODEL else "python"
+            detail = f"{result.model} in {result.attempts} attempt(s)" if result.model else written
+            if result.reused:
+                # Say so rather than letting an identical re-run look like a fresh call.
+                typer.secho(
+                    f"unchanged since the last run - reused ({written})",
+                    fg=typer.colors.BRIGHT_BLACK,
+                )
+            else:
+                typer.secho(f"written by {detail}", fg=typer.colors.BRIGHT_BLACK)
+
+            if result.total_tokens:
+                cost = f", ${result.cost_usd:.4f}" if result.cost_usd is not None else ""
+                typer.secho(
+                    f"{result.prompt_tokens} in / {result.completion_tokens} out{cost}",
+                    fg=typer.colors.BRIGHT_BLACK,
+                )
+            if result.fell_back:
+                # Never silent: a Python brief where a model one was expected is
+                # something the operator should be able to see and fix.
+                typer.secho(
+                    f"[{WARN}] fell back to Python - {result.fell_back}", fg=typer.colors.YELLOW
+                )
         return 0
 
     async def _wrapped() -> int:

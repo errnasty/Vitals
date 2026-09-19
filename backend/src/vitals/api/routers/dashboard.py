@@ -36,6 +36,7 @@ from vitals.db.models import (
     MetricDaily,
     ScoreContribution,
     ScorePillar,
+    SourceConnection,
     VitalsScore,
 )
 from vitals.normalize import canonical as silver
@@ -104,6 +105,12 @@ class TodayResponse(BaseModel):
     headlines: list[HeadlineView]
     trend: list[float]
     brief: BriefView | None = None
+    # Whether a source is attached at all. Carried here rather than fetched
+    # separately because the screen's contract is one round trip, and because a
+    # disconnected connector has to be reachable from the home screen in *every*
+    # state — including the one where there is plenty of old data on the page and
+    # nothing new has arrived for a week.
+    source_connected: bool = True
     # Set when there is nothing to show, so the UI can say why rather than
     # rendering a convincing set of dashes.
     empty_reason: str | None = None
@@ -284,6 +291,17 @@ def _brief_view(row: DailyBrief | None) -> BriefView | None:
     )
 
 
+async def _source_connected(session: AsyncSession, user_id: uuid.UUID) -> bool:
+    """True when a source holds usable credentials.
+
+    Reads the connection row rather than the vault: the vault needs an encryption
+    key, and a dashboard that 500s because `VITALS_ENCRYPTION_KEY` is unset would be
+    a worse failure than the one it is reporting.
+    """
+    row = await session.scalar(select(SourceConnection).where(SourceConnection.user_id == user_id))
+    return row is not None and row.status in ("active", "degraded")
+
+
 async def _score_series(
     session: AsyncSession, user_id: uuid.UUID, *, days: int, end: date
 ) -> list[SeriesPoint]:
@@ -320,6 +338,7 @@ async def today(user: CurrentUserDep, session: SessionDep) -> TodayResponse:
             pillars=[],
             headlines=[],
             trend=[],
+            source_connected=await _source_connected(session, user.id),
             empty_reason=(
                 "No score yet — run `vitals score` to build it."
                 if has_silver
@@ -336,6 +355,7 @@ async def today(user: CurrentUserDep, session: SessionDep) -> TodayResponse:
         headlines=await _headlines(session, user.id),
         trend=[point.value for point in trend],
         brief=_brief_view(await ai_brief.latest(session, user_id=user.id, day=day)),
+        source_connected=await _source_connected(session, user.id),
     )
 
 

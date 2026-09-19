@@ -23,6 +23,15 @@ from vitals.db.base import Base
 # Names are namespaced by source so one vault serves every connector.
 GARMIN_TOKENS = "garmin.tokens"
 GARMIN_PASSWORD = "garmin.password"
+# A login that has been started and is waiting for an MFA code. Holds the resumable
+# state and, for the few minutes it lives, the credentials needed to rebuild the
+# client — encrypted like everything else here, and deleted the moment the code is
+# accepted, rejected for the last time, or the window closes.
+GARMIN_PENDING_LOGIN = "garmin.pending_login"
+# Failed attempt count and lockout, so a web form cannot be used to hammer Garmin's
+# SSO. Separate from `source_connection.consecutive_failures`, which counts sync
+# failures and must not be reset by someone retrying a password.
+GARMIN_LOGIN_ATTEMPTS = "garmin.login_attempts"
 
 
 class Credential(Base):

@@ -1,4 +1,4 @@
-import { Card, CardHeader, Stat } from "@/design";
+import { Button, Card, CardHeader, Stat } from "@/design";
 import type { IconName } from "@/design";
 
 export type NoticeProps = {
@@ -7,6 +7,8 @@ export type NoticeProps = {
   icon?: IconName;
   /** A command to run, shown verbatim. */
   command?: string;
+  /** Somewhere to go that fixes it, for the cases where tapping is enough. */
+  action?: { label: string; href: string };
 };
 
 /**
@@ -17,11 +19,16 @@ export type NoticeProps = {
  * different problems, and a dash looks identical for both. So the reason is the
  * content, and where there is a command that fixes it, it is on screen.
  */
-export function Notice({ title, body, icon = "sparkle", command }: NoticeProps) {
+export function Notice({ title, body, icon = "sparkle", command, action }: NoticeProps) {
   return (
     <Card>
       <CardHeader title={title} icon={icon} />
       <Stat value={body} size="xs" caption={command ? `Run: ${command}` : undefined} />
+      {action ? (
+        <Button href={action.href} block>
+          {action.label}
+        </Button>
+      ) : null}
     </Card>
   );
 }

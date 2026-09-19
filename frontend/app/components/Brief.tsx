@@ -1,5 +1,5 @@
 import { Card, CardHeader } from "@/design";
-import styles from "./Brief.module.css";
+import styles from "./Prose.module.css";
 
 export type BriefProps = {
   body: string;

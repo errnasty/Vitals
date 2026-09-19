@@ -53,7 +53,8 @@ export default async function Page() {
     );
   }
 
-  const { score, pillars, headlines, trend, brief, empty_reason } = result.data;
+  const { score, pillars, headlines, trend, brief, source_connected, empty_reason } =
+    result.data;
 
   if (!score) {
     return (
@@ -62,7 +63,14 @@ export default async function Page() {
           <Notice
             title="Nothing to show yet"
             body={empty_reason ?? "No score has been computed."}
-            command={empty_reason?.includes("vitals score") ? "vitals score" : "vitals sync"}
+            command={empty_reason?.includes("vitals score") ? "vitals score" : undefined}
+            // Before Garmin is connected the fix is a tap, not a command — and on a
+            // phone the command is not an option at all.
+            action={
+              empty_reason?.includes("connect Garmin")
+                ? { label: "Connect Garmin", href: "/connect" }
+                : undefined
+            }
           />
         </Gutter>
       </AppShell>
@@ -80,6 +88,15 @@ export default async function Page() {
         />
 
         <Stack>
+          {source_connected ? null : (
+            <Notice
+              title="Garmin isn't connected"
+              body="Nothing new will arrive until it is. What's below is the last data that did."
+              icon="bolt"
+              action={{ label: "Connect Garmin", href: "/connect" }}
+            />
+          )}
+
           {brief ? (
             <Brief
               body={brief.body}

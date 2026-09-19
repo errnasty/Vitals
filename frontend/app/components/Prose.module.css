@@ -1,0 +1,46 @@
+/*
+ * Running text, which the design system has no component for — every one of its
+ * primitives is built around a number. These are the few places the app puts a
+ * sentence on screen instead: the daily brief, and the Connect screen's
+ * explanations. Feature-side rather than in `design/`, so the template stays what
+ * it is; every value is a design token, so the text follows the theme.
+ */
+
+.body {
+  margin: 0;
+  font-family: var(--v-font);
+  font-size: var(--v-t-body);
+  /* Looser than the app's default: these are the only blocks read left to right
+     rather than glanced at. */
+  line-height: 1.55;
+  color: var(--v-text);
+  text-wrap: pretty;
+}
+
+/* Supporting text — what a field wants, or a caveat under a form. */
+.note {
+  margin: 0 0 var(--v-s-4);
+  font-family: var(--v-font);
+  font-size: var(--v-t-sm);
+  line-height: 1.5;
+  color: var(--v-text-dim);
+  text-wrap: pretty;
+}
+
+.note:last-child {
+  margin-bottom: 0;
+}
+
+.error {
+  composes: note;
+  color: var(--v-bad);
+}
+
+.body code,
+.note code {
+  font-family: var(--v-font-mono);
+  font-size: 0.92em;
+  padding: 0.1em 0.35em;
+  border-radius: var(--v-r-xs);
+  background: var(--v-surface-2);
+}

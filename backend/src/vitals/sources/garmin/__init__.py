@@ -9,8 +9,11 @@ everything downstream depends only on bronze.
 from vitals.sources.garmin.client import (
     GarminClient,
     GarminError,
+    MFARequired,
     NeedsReauth,
     RateLimited,
+    begin_login,
+    finish_login,
     login_with_credentials,
 )
 from vitals.sources.garmin.governor import (
@@ -30,9 +33,12 @@ __all__ = [
     "GarminError",
     "GarminSource",
     "GovernorState",
+    "MFARequired",
     "NeedsReauth",
     "RateGovernor",
     "RateLimited",
     "RateLimits",
+    "begin_login",
+    "finish_login",
     "login_with_credentials",
 ]

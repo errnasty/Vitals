@@ -15,6 +15,7 @@ import {
   ThemeToggle,
   TopBar,
 } from "@/design";
+import { Brief } from "@/app/components/Brief";
 import { Notice } from "@/app/components/Notice";
 import { fetchToday } from "@/app/lib/api";
 import { headlineIcon, longDate, pillarIcon } from "@/app/lib/display";
@@ -52,7 +53,7 @@ export default async function Page() {
     );
   }
 
-  const { score, pillars, headlines, trend, empty_reason } = result.data;
+  const { score, pillars, headlines, trend, brief, empty_reason } = result.data;
 
   if (!score) {
     return (
@@ -79,6 +80,13 @@ export default async function Page() {
         />
 
         <Stack>
+          {brief ? (
+            <Brief
+              body={brief.body}
+              when={brief.date === result.data.date ? undefined : longDate(brief.date)}
+            />
+          ) : null}
+
           {trend.length > 1 ? (
             <Card>
               <CardHeader

@@ -39,12 +39,20 @@ export type HeadlineView = {
   meta: string | null;
 };
 
+export type BriefView = {
+  date: string;
+  body: string;
+  source: string;
+  written_by_model: boolean;
+};
+
 export type Today = {
   date: string | null;
   score: ScoreView | null;
   pillars: PillarView[];
   headlines: HeadlineView[];
   trend: number[];
+  brief: BriefView | null;
   empty_reason: string | null;
 };
 

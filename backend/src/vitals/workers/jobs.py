@@ -15,6 +15,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from vitals.ai.brief import generate as write_brief
 from vitals.analytics import recompute as recompute_gold
 from vitals.db.session import dispose_engine, get_sessionmaker
 from vitals.ingest.pipeline import NoSuchUser, resolve_user, run_backfill, run_incremental
@@ -57,7 +58,9 @@ async def _refresh_derived(
 
     Each layer only runs if the one below it succeeded: a training load derived from
     a half-written silver layer, or a score composed from a half-written gold one,
-    produces a number that looks fine and is wrong.
+    produces a number that looks fine and is wrong. The daily brief is last for the
+    same reason and one more: it is the only step that can spend money, and it should
+    never do so describing a layer that failed to build.
     """
     try:
         user = await resolve_user(session, email=email)
@@ -94,6 +97,24 @@ async def _refresh_derived(
         return
 
     log.info("sync.score_refreshed", scored=scored.scored, trusted=scored.trusted)
+
+    try:
+        brief = await write_brief(session, user_id=user.id)
+    except Exception as exc:  # noqa: BLE001 - reported, never fatal to the sync
+        log.error("sync.brief_failed", error=f"{type(exc).__name__}: {exc}")
+        return
+
+    if brief is not None:
+        # Re-running a sync that changed nothing costs nothing: the brief is keyed on
+        # a hash of the digest, so an unchanged day is served from storage rather
+        # than rewritten. Only a run that actually moved a number pays for a call.
+        log.info(
+            "sync.brief_refreshed",
+            source=brief.source,
+            reused=brief.reused,
+            attempts=brief.attempts,
+            tokens=brief.prompt_tokens + brief.completion_tokens,
+        )
 
 
 async def run_history(*, start: date, end: date, email: str | None = None) -> SyncOutcome:

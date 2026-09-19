@@ -148,8 +148,22 @@ class Settings(BaseSettings):
     # is reported rather than fatal. Flip this on once something depends on it.
     require_pgvector: bool = Field(default=False, validation_alias="VITALS_REQUIRE_PGVECTOR")
 
+    # ── AI ──────────────────────────────────────────────────────────────────────
+    # Everything above this line works with none of it set. The daily brief composes
+    # itself in Python when there is no key, so an unconfigured deployment loses the
+    # prose and keeps the facts.
     openrouter_api_key: str | None = Field(default=None, validation_alias="OPENROUTER_API_KEY")
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # An OpenRouter model slug (`vendor/model`, as its catalogue lists it). Swappable
+    # on purpose: the brief is sixty words written from numbers Python already
+    # computed, so this is the cheapest dial in the app to turn.
+    ai_model: str = Field(default="anthropic/claude-sonnet-5", validation_alias="VITALS_AI_MODEL")
+    # Sixty words needs nowhere near this; the cap is a runaway guard, not a target.
+    ai_max_output_tokens: int = Field(default=300, validation_alias="VITALS_AI_MAX_TOKENS")
+    ai_timeout_s: float = Field(default=30.0, validation_alias="VITALS_AI_TIMEOUT_S")
+    # A brief is only rewritten when the day's digest changes, so a re-run is free.
+    # Set this to force one — after editing the prompt, say.
+    ai_force_regenerate: bool = Field(default=False, validation_alias="VITALS_AI_FORCE")
 
     # NoDecode: keep pydantic-settings from JSON-parsing this before the validator
     # below turns a plain comma-separated env var into a list.
@@ -256,6 +270,11 @@ class Settings(BaseSettings):
         there is no external issuer whose tokens it would be forging.
         """
         return self.jwks_url is None and self.jwt_issuer == SELF_ISSUER and bool(self.jwt_secret)
+
+    @property
+    def ai_configured(self) -> bool:
+        """True when a model can actually be called. False is a supported state."""
+        return bool(self.openrouter_api_key)
 
     @property
     def legacy_supabase_env(self) -> list[str]:

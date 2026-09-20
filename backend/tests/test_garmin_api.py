@@ -10,6 +10,7 @@ should not be.
 from __future__ import annotations
 
 import json
+import uuid
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -142,6 +143,8 @@ async def test_status_is_disconnected_before_anything_happens(
         "awaiting_mfa": False,
         "last_success_at": None,
         "locked_until": None,
+        # No history has been asked for, so there is nothing to report on it.
+        "history": None,
     }
 
 
@@ -428,3 +431,75 @@ async def test_disconnect_forgets_the_credentials_but_not_the_data(
         select(SourceConnection).where(SourceConnection.user_id == USER_ID)
     )
     assert connection is not None and connection.status == "needs_reauth"
+
+
+# ── the history pull that starts on connect ─────────────────────────────────────
+
+
+async def test_connecting_asks_for_the_history_immediately(
+    client: ClientFactory, user: AppUser, pg_session: AsyncSession, monkeypatch
+) -> None:
+    """Connecting a source and then showing an empty dashboard is a strange thing
+    to do to someone who just handed over their password."""
+    stub_begin(monkeypatch, FakeClient())
+    started: list[uuid.UUID] = []
+
+    async def fake_pull(user_id: uuid.UUID) -> None:
+        started.append(user_id)
+
+    monkeypatch.setattr(router, "pull_history", fake_pull)
+
+    async with client() as http:
+        response = await http.post(
+            "/garmin/connect",
+            json={"email": GARMIN_EMAIL, "password": PASSWORD},
+            headers=_auth(),
+        )
+        status_body = (await http.get("/garmin/status", headers=_auth())).json()
+
+    assert response.status_code == 200
+    assert "history" in response.json()["detail"]
+    # The cursor is written in the request; the fetching happens after it.
+    connection = await pg_session.scalar(
+        select(SourceConnection).where(SourceConnection.user_id == USER_ID)
+    )
+    assert connection is not None and connection.backfill_from is not None
+    assert started == [USER_ID]
+    assert status_body["history"]["running"] is True
+    assert status_body["history"]["progress"] == "0%"
+
+
+async def test_the_mfa_path_starts_the_history_too(
+    client: ClientFactory, user: AppUser, pg_session: AsyncSession, monkeypatch
+) -> None:
+    stub_begin(monkeypatch, MFARequired(client_state=STATE))
+    stub_finish(monkeypatch, FakeClient())
+    started: list[uuid.UUID] = []
+
+    async def fake_pull(user_id: uuid.UUID) -> None:
+        started.append(user_id)
+
+    monkeypatch.setattr(router, "pull_history", fake_pull)
+
+    async with client() as http:
+        await http.post(
+            "/garmin/connect",
+            json={"email": GARMIN_EMAIL, "password": PASSWORD},
+            headers=_auth(),
+        )
+        await http.post("/garmin/connect/mfa", json={"code": "123456"}, headers=_auth())
+
+    assert started == [USER_ID]
+
+
+async def test_a_failed_history_pull_never_reaches_the_user(
+    client: ClientFactory, user: AppUser, monkeypatch
+) -> None:
+    """By the time it runs the tokens are stored and the user has been told."""
+    from vitals.ingest import backfill as bf
+
+    async def explode(*args, **kwargs):
+        raise RuntimeError("garmin fell over")
+
+    monkeypatch.setattr(bf, "run", explode)
+    await router.pull_history(USER_ID)  # must not raise

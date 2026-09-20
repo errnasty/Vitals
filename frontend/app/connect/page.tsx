@@ -44,19 +44,27 @@ export default async function Page() {
               <CardHeader
                 title="Garmin is connected"
                 icon="check"
-                action={<Badge tone="accent">Active</Badge>}
+                action={
+                  <Badge tone={status.history && !status.history.done ? "neutral" : "accent"}>
+                    {status.history && !status.history.done
+                      ? status.history.progress
+                      : "Active"}
+                  </Badge>
+                }
               />
               <p className={prose.note}>
                 The sync runs every six hours and fills in from today backwards.
                 Tokens last about a year and refresh themselves, so this should not
                 need touching again.
               </p>
-              <p className={prose.note}>
-                Your older history is not here yet — that is a one-off pull. Run{" "}
-                <code>vitals backfill --start 2019-01-01</code> from a computer when
-                you have one, and it will fetch the archive at a rate Garmin
-                tolerates.
-              </p>
+              {status.history ? (
+                <p className={prose.note}>
+                  {status.history.done
+                    ? `Your history is in, back to ${status.history.since}.`
+                    : `Pulling your history — ${status.history.progress} of the way back to ${status.history.since}. It carries on in the background and resumes on the next sync, so you can close the app.`}
+                  {status.history.detail ? ` ${status.history.detail}` : ""}
+                </p>
+              ) : null}
             </Card>
             <form action={disconnectAction}>
               <Button type="submit" variant="quiet" block>

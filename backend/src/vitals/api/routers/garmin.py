@@ -26,13 +26,14 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from vitals.api import format as fmt
 from vitals.api.deps import CurrentUserDep, SessionDep
 from vitals.config import get_settings
 from vitals.db.models import (
@@ -42,6 +43,7 @@ from vitals.db.models import (
     GARMIN_TOKENS,
     AppUser,
 )
+from vitals.ingest import backfill
 from vitals.ingest.pipeline import connection_for
 from vitals.logging import get_logger
 from vitals.security.vault import CredentialVault, VaultUnavailable, build_vault
@@ -70,6 +72,11 @@ PENDING_TTL = timedelta(minutes=10)
 MAX_ATTEMPTS = 5
 LOCKOUT = timedelta(minutes=15)
 
+# Said on success, because "Connected." on its own invites a reload of an empty
+# dashboard. The history is arriving; it is not instant, and the reason is Garmin's
+# rate limit rather than anything this app could hurry.
+CONNECTED_DETAIL = "Connected. Pulling your history now — this takes a few minutes."
+
 
 class ConnectRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
@@ -89,6 +96,18 @@ class ConnectResponse(BaseModel):
     display_name: str | None = None
 
 
+class BackfillView(BaseModel):
+    """How far the history pull has got, for a screen to show rather than compute."""
+
+    running: bool
+    done: bool
+    # Already a percentage string: the UI renders, Python does the arithmetic.
+    progress: str | None = None
+    since: date | None = None
+    reached: date | None = None
+    detail: str | None = None
+
+
 class StatusResponse(BaseModel):
     connected: bool
     state: str
@@ -98,6 +117,7 @@ class StatusResponse(BaseModel):
     awaiting_mfa: bool = False
     last_success_at: datetime | None = None
     locked_until: datetime | None = None
+    history: BackfillView | None = None
 
 
 # ── attempt accounting ──────────────────────────────────────────────────────────
@@ -168,6 +188,29 @@ async def _pending(vault: CredentialVault, user_id: uuid.UUID) -> dict[str, Any]
     return record
 
 
+async def pull_history(user_id: uuid.UUID) -> None:
+    """Work the history pull, on its own session, after the response has gone.
+
+    Its own session because the request's is closed the moment the response is
+    written, and this outlives it by minutes. Nothing here can fail the connection
+    that started it — by the time this runs the tokens are stored and the user has
+    already been told they are connected.
+    """
+    from vitals.db.session import get_sessionmaker
+
+    try:
+        async with get_sessionmaker()() as session:
+            result = await backfill.run(session, user_id=user_id)
+        log.info(
+            "garmin.history_pulled",
+            chunks=result.chunks,
+            requests=result.requests,
+            done=result.done,
+        )
+    except Exception as exc:  # noqa: BLE001 - a background task has nobody to raise to
+        log.error("garmin.history_failed", error=f"{type(exc).__name__}: {exc}")
+
+
 async def _store_tokens(
     session: AsyncSession,
     vault: CredentialVault,
@@ -199,6 +242,34 @@ async def _store_tokens(
 
     log.info("garmin.connected", via="api")
     return name
+
+
+def _backfill_view(progress: backfill.BackfillProgress) -> BackfillView | None:
+    if progress.requested_from is None:
+        return None
+    return BackfillView(
+        running=progress.running,
+        done=progress.done,
+        progress=None if progress.fraction is None else fmt.percent(progress.fraction),
+        since=progress.requested_from,
+        reached=progress.cursor,
+        detail=progress.detail,
+    )
+
+
+async def _start_history(
+    session: AsyncSession, background: BackgroundTasks, *, user_id: uuid.UUID
+) -> None:
+    """Ask for the history, and start pulling it without making the caller wait.
+
+    Connecting a source and then showing an empty dashboard is a strange thing to do
+    to someone who just handed over their password, so the pull starts here rather
+    than at the next cron tick. It cannot be done *in* the request: a few hundred
+    rate-governed calls is ten minutes, and nothing should hold a connection open
+    that long. So the cursor is written now and the work happens after the response.
+    """
+    await backfill.request(session, user_id=user_id)
+    background.add_task(pull_history, user_id)
 
 
 def _vault(session: AsyncSession) -> CredentialVault:
@@ -237,12 +308,16 @@ async def connection_status(user: CurrentUserDep, session: SessionDep) -> Status
         awaiting_mfa=pending is not None,
         last_success_at=connection.last_success_at if connection is not None else None,
         locked_until=locked,
+        history=_backfill_view(await backfill.progress(session, user_id=user.id)),
     )
 
 
 @router.post("/connect", response_model=ConnectResponse)
 async def connect(
-    body: ConnectRequest, user: CurrentUserDep, session: SessionDep
+    body: ConnectRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+    background: BackgroundTasks,
 ) -> ConnectResponse:
     """Start a login. Returns either a finished connection or a demand for a code."""
     vault = _vault(session)
@@ -278,12 +353,16 @@ async def connect(
         )
 
     name = await _store_tokens(session, vault, user, result, email=body.email)
-    return ConnectResponse(status="connected", detail="Connected.", display_name=name)
+    await _start_history(session, background, user_id=user.id)
+    return ConnectResponse(status="connected", detail=CONNECTED_DETAIL, display_name=name)
 
 
 @router.post("/connect/mfa", response_model=ConnectResponse)
 async def submit_mfa(
-    body: MFARequest, user: CurrentUserDep, session: SessionDep
+    body: MFARequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+    background: BackgroundTasks,
 ) -> ConnectResponse:
     """Finish a login that was waiting on a code."""
     vault = _vault(session)
@@ -315,7 +394,8 @@ async def submit_mfa(
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
 
     name = await _store_tokens(session, vault, user, client, email=pending["email"])
-    return ConnectResponse(status="connected", detail="Connected.", display_name=name)
+    await _start_history(session, background, user_id=user.id)
+    return ConnectResponse(status="connected", detail=CONNECTED_DETAIL, display_name=name)
 
 
 @router.post("/disconnect", response_model=StatusResponse)

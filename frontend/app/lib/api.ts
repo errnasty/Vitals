@@ -92,6 +92,16 @@ export type Trends = {
   series: SeriesView[];
 };
 
+export type BackfillView = {
+  running: boolean;
+  done: boolean;
+  /** Already a percentage string — Python does the arithmetic. */
+  progress: string | null;
+  since: string | null;
+  reached: string | null;
+  detail: string | null;
+};
+
 export type GarminStatus = {
   connected: boolean;
   state: string;
@@ -99,6 +109,7 @@ export type GarminStatus = {
   awaiting_mfa: boolean;
   last_success_at: string | null;
   locked_until: string | null;
+  history: BackfillView | null;
 };
 
 export type ConnectResult = {

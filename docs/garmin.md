@@ -217,3 +217,46 @@ ten minutes.
 endpoints downsample away. It lands in phase 3, together with a Railway bucket and the
 `fitdecode` parser — there is nowhere durable to put the bytes until then, and Railway's
 filesystem is not it.
+
+## The history pull, which starts the moment you connect
+
+Connecting a source and then showing an empty dashboard is a strange thing to do to
+someone who just handed over their password, so the backfill starts at connect rather
+than at the next cron tick. It cannot happen *in* the request: a few hundred
+rate-governed calls is around ten minutes, and nothing should hold a connection open
+that long.
+
+So it is a **cursor**, not an operation. `source_connection.backfill_cursor` is the
+oldest day actually fetched; each pass walks it backwards a chunk at a time and saves
+after every chunk.
+
+```
+connect ──▶ write the cursor, return ──▶ background task works it for ≤5 min
+                                              │ budget spent, or rate limited
+                                              ▼
+                              next `vitals sync` resumes from the same day
+```
+
+| | |
+|---|---|
+| How far back | `VITALS_BACKFILL_YEARS`, default 5 |
+| Chunk | 180 days, saved after each |
+| Budget per pass | 5 minutes, then it pauses |
+| Direction | **backwards** — recent weeks first |
+| On failure | the cursor does not move, so the window is retried, never skipped |
+
+Backwards is the point: the most recent weeks are the ones the dashboard needs to show
+anything at all, so they arrive within a minute or two and the deep history fills in
+behind them. Re-fetching a window costs requests and writes nothing, because bronze is
+hash-deduped — which is what makes an interrupted pull safe to simply run again.
+
+### What it will not get you
+
+- **It is not instant.** The governor holds requests 1–3 seconds apart on purpose; a
+  five-year pull is minutes of mostly waiting. That is the rate limit, not the app.
+- **Deep history is range data only.** `plan_backfill` uses the range endpoints, so
+  years of per-day detail (sleep stages, stress samples) are not retrievable — those
+  have no range variant, and covering them would be one request per endpoint per day.
+  That detail accrues from the day you connect, forwards.
+- **Garmin has nothing from before your account existed.** Overshooting costs a few
+  empty responses rather than an error, which is why the reach is set in years.

@@ -66,11 +66,24 @@
   --v-track-tight: -0.012em;
   --v-track-label: 0.09em;
 
-  /* ---- Motion ---- */
+  /* ---- Motion ----
+   * One easing for almost everything: a strong decelerating curve that arrives
+   * quickly and settles, which is what makes a screen feel responsive rather than
+   * animated. `--v-ease-out` is for things leaving, where nobody is waiting.
+   *
+   * `--v-stagger` is the gap between one card entering and the next. Small on
+   * purpose: the point is to give the eye an order to read in, not to make anyone
+   * watch a sequence. Six cards at 40ms is a quarter of a second in total. */
   --v-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --v-ease-out: cubic-bezier(0.4, 0, 1, 1);
   --v-dur-fast: 120ms;
   --v-dur: 220ms;
   --v-dur-slow: 480ms;
+  /* The arc and the sparkline draw themselves in. Long enough to be seen as
+   * drawing rather than appearing, short enough that nobody waits for it. */
+  --v-dur-draw: 900ms;
+  --v-stagger: 40ms;
+  --v-rise: 10px;
 
   /* ---- Over media ----
    * Text on the hero sits on a dark scrim in both themes, so it never follows

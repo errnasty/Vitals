@@ -115,3 +115,45 @@ cd frontend && npm run dev   # then open /design
 
 Components stay server-renderable unless they genuinely need a hook;
 `ScoreGauge` and `ThemeToggle` are the only two that do.
+
+## Motion
+
+Every animation in the system is declared in **`base.css`**, on `data-motion`
+attributes. Components opt in; they never declare an animation of their own.
+
+That is a constraint, not a preference. CSS Modules rewrites `animation-name` to a
+hashed, file-local name, so a `.module.css` referring to a keyframe defined anywhere
+else animates **nothing** — the rule still computes a duration, the element never
+moves, and it is indistinguishable from a working animation until you diff two frames
+mid-flight. This system hit exactly that and it cost a rebuild to find. Keeping the
+keyframes and the rules that use them together in one global file makes it impossible,
+and has the side benefit of putting the whole motion vocabulary on one screen.
+
+| Attribute | What it does | Used by |
+|---|---|---|
+| `data-motion="rise"` | fades up over `--v-rise` | anything entering |
+| `data-motion="fade"` | opacity only | page body, the sparkline's fill |
+| `data-motion="settle"` | a fade, 120ms behind | the gauge readout |
+| `data-motion="draw"` | an arc or line drawing itself in | ScoreGauge, ProgressRing, Sparkline |
+| `data-motion="grow"` | scales up from the baseline | BarSeries bars |
+| `data-motion-group` | its children enter in turn | Stack, Grid2 |
+
+`draw` needs `--v-draw-from` set inline — the dash offset at which the shape is
+invisible — because CSS cannot measure a path. `Sparkline` sums its own segment
+lengths rather than calling `getTotalLength()`, which would need a DOM node and a
+layout pass to produce the same number.
+
+### Rules
+
+- **Nothing animates a number.** The arc draws in; the digits in the middle are
+  correct on the first frame. Counting up through 43 on the way to 78 would put
+  figures on screen that nothing computed, which is the one thing this app does not
+  do.
+- **Entrances only, never exits.** These are server-rendered pages; there is no
+  "before" state to transition from, and a screen that animates on the way out just
+  delays the next one.
+- **A press answers faster than it releases.** `--v-dur-fast` going down,
+  `--v-dur` coming back — a tap that does not respond immediately reads as a miss.
+- **All of it is decorative.** The `prefers-reduced-motion` block at the foot of
+  `base.css` switches off every animation and transition in the system, and nothing
+  above depends on one having run.

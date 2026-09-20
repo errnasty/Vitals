@@ -131,6 +131,117 @@ ol {
   scrollbar-color: var(--v-line-strong) transparent;
 }
 
+/* ---- Entrances -------------------------------------------------------------
+ *
+ * Content arrives rather than appearing. Everything here is a mount animation, not
+ * a transition: these pages are server-rendered, so there is no "before" state to
+ * transition from — the first frame is the finished one unless something animates
+ * it in.
+ *
+ * All of it is decorative and all of it is switched off under `prefers-reduced-
+ * motion` by the block at the bottom of this file, which is why none of these
+ * keyframes are allowed to end anywhere but the resting state.
+ */
+
+@keyframes v-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--v-rise));
+  }
+}
+
+@keyframes v-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes v-draw {
+  from {
+    stroke-dashoffset: var(--v-draw-from, 0);
+  }
+}
+
+@keyframes v-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+/* ---- The motion layer ------------------------------------------------------
+ *
+ * Every animation in the design system is declared here, on `data-motion`
+ * attributes, rather than inside the component stylesheets — and the reason is a
+ * real constraint rather than taste. CSS Modules rewrites `animation-name` to a
+ * hashed, file-local name, so a module referring to a keyframe defined anywhere
+ * else silently animates nothing: the rule computes a duration, the element never
+ * moves, and it looks exactly like a working animation until you diff two frames.
+ *
+ * Keeping the keyframes and the rules that use them together in this one global
+ * file avoids that, and has the side benefit of putting the whole motion
+ * vocabulary on one screen. Components opt in with an attribute.
+ *
+ * Everything below is decorative, and the reduced-motion block at the end of this
+ * file switches all of it off.
+ */
+
+[data-motion="rise"] {
+  animation: v-rise var(--v-dur-slow) var(--v-ease) both;
+}
+
+[data-motion="fade"] {
+  animation: v-fade var(--v-dur) var(--v-ease) both;
+}
+
+/* Follows the thing it belongs to rather than racing it. */
+[data-motion="settle"] {
+  animation: v-fade var(--v-dur-slow) var(--v-ease) both;
+  animation-delay: 120ms;
+}
+
+/* An arc or a line drawing itself in. `--v-draw-from` is the dash offset at which
+ * the shape is invisible, set inline because CSS cannot measure a path. */
+[data-motion="draw"] {
+  animation: v-draw var(--v-dur-draw) var(--v-ease) both;
+}
+
+[data-motion="grow"] {
+  transform-origin: bottom;
+  animation: v-grow var(--v-dur-slow) var(--v-ease) both;
+}
+
+/* A run of cards arrives in reading order. Staggering by `:nth-child` keeps it a
+ * layout concern: a page adds a card and it joins the sequence without anyone
+ * passing an index.
+ *
+ * Capped at eight, because past that the delay is longer than anyone waits and a
+ * late card sliding in reads as the page still loading. */
+[data-motion-group] > * {
+  animation: v-rise var(--v-dur-slow) var(--v-ease) both;
+}
+
+[data-motion-group] > :nth-child(2) {
+  animation-delay: var(--v-stagger);
+}
+[data-motion-group] > :nth-child(3) {
+  animation-delay: calc(var(--v-stagger) * 2);
+}
+[data-motion-group] > :nth-child(4) {
+  animation-delay: calc(var(--v-stagger) * 3);
+}
+[data-motion-group] > :nth-child(5) {
+  animation-delay: calc(var(--v-stagger) * 4);
+}
+[data-motion-group] > :nth-child(6) {
+  animation-delay: calc(var(--v-stagger) * 5);
+}
+[data-motion-group] > :nth-child(7) {
+  animation-delay: calc(var(--v-stagger) * 6);
+}
+[data-motion-group] > :nth-child(n + 8) {
+  animation-delay: calc(var(--v-stagger) * 7);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

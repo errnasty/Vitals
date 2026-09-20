@@ -45,11 +45,19 @@
   border-radius: var(--v-r-pill);
   color: var(--v-text-faint);
   transition: color var(--v-dur) var(--v-ease),
-    background-color var(--v-dur) var(--v-ease);
+    background-color var(--v-dur) var(--v-ease),
+    transform var(--v-dur) var(--v-ease);
 }
 
 .item:hover {
   color: var(--v-text-dim);
+}
+
+/* The tab answers the tap before the next screen has rendered, which is most of
+   what makes navigation feel immediate rather than laggy. */
+.item:active {
+  transform: scale(0.94);
+  transition-duration: var(--v-dur-fast);
 }
 
 .active {

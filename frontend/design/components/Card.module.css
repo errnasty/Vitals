@@ -61,15 +61,27 @@
   width: 100%;
   text-align: left;
   transition: border-color var(--v-dur) var(--v-ease),
+    background-color var(--v-dur) var(--v-ease),
     transform var(--v-dur) var(--v-ease);
 }
 
 .interactive:hover {
   border-color: var(--v-line-strong);
+  background: var(--v-surface-2);
 }
 
+/* Faster going down than coming back up. A press has to answer immediately or it
+ * reads as the tap having missed; the release can afford to settle. */
 .interactive:active {
-  transform: scale(0.99);
+  transform: scale(0.985);
+  transition-duration: var(--v-dur-fast);
+}
+
+/* Keyboard focus gets the same ring the inputs use, rather than the browser's
+ * default outline sitting awkwardly outside a 22px corner radius. */
+.interactive:focus-visible {
+  outline: 2px solid var(--v-accent);
+  outline-offset: 2px;
 }
 
 /* ---- Card header ---- */

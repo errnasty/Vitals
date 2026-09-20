@@ -17,7 +17,10 @@ export function AppShell({ header, nav, children }: AppShellProps) {
   return (
     <div className={styles.shell}>
       {header}
-      <div className={[styles.body, nav ? "" : styles.noNav].filter(Boolean).join(" ")}>
+      <div
+        className={[styles.body, nav ? "" : styles.noNav].filter(Boolean).join(" ")}
+        data-motion="fade"
+      >
         {children}
       </div>
       {nav}
@@ -32,10 +35,18 @@ export function Gutter({ children }: { children: ReactNode }) {
 
 /** Vertical rhythm for a run of cards. */
 export function Stack({ children }: { children: ReactNode }) {
-  return <div className={styles.stack}>{children}</div>;
+  return (
+    <div className={styles.stack} data-motion-group>
+      {children}
+    </div>
+  );
 }
 
 /** The two-up tile row used for paired metrics. */
 export function Grid2({ children }: { children: ReactNode }) {
-  return <div className={styles.grid2}>{children}</div>;
+  return (
+    <div className={styles.grid2} data-motion-group>
+      {children}
+    </div>
+  );
 }

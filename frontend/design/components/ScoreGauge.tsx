@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Icon } from "../icons";
 import styles from "./ScoreGauge.module.css";
 
@@ -70,8 +70,18 @@ export function ScoreGauge({
             strokeLinecap="round"
             strokeDasharray={`${arc} ${circumference}`}
           />
+          {/*
+            The lit arc draws itself from empty on mount. Written as an offset
+            rather than an animated dash length because a keyframe cannot read the
+            computed value: the dash is fixed at its final size and the offset —
+            handed to CSS as a custom property — slides it into view.
+
+            The transition stays for the case where the value changes in place.
+          */}
           <circle
             className={styles.value}
+            data-motion="draw"
+            style={{ "--v-draw-from": `${arc * fraction}px` } as CSSProperties}
             cx={centre}
             cy={centre}
             r={radius}
@@ -84,7 +94,7 @@ export function ScoreGauge({
         </g>
       </svg>
 
-      <div className={styles.center}>
+      <div className={styles.center} data-motion="settle">
         <span className={styles.number}>{value}</span>
         {label ? <span className={styles.label}>{label}</span> : null}
         {typeof rating === "number" ? (

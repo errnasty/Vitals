@@ -9,10 +9,11 @@ last-seen without any schema change.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -44,6 +45,22 @@ class SourceConnection(Base):
     status_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Garmin's display name — proof of which account the stored tokens belong to.
     external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    # ── history pull ────────────────────────────────────────────────────────
+    # A backfill is minutes of rate-governed requests, which is longer than any
+    # request should live and longer than a sleeping container is willing to stay
+    # awake. So it is stored rather than held: `backfill_from` is how far back the
+    # user asked for, `backfill_cursor` is the oldest day actually fetched, and the
+    # gap between them is the work left. Any run — the one kicked off at connect, or
+    # a later cron tick — picks up exactly where the last one stopped.
+    backfill_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    backfill_cursor: Mapped[date | None] = mapped_column(Date, nullable=True)
+    backfill_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    backfill_finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cooldown_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

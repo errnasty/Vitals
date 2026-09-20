@@ -148,6 +148,12 @@ class Settings(BaseSettings):
     # is reported rather than fatal. Flip this on once something depends on it.
     require_pgvector: bool = Field(default=False, validation_alias="VITALS_REQUIRE_PGVECTOR")
 
+    # How far back a history pull reaches when a source connects. Years rather than
+    # a date because the answer is "as much as there is", and Garmin's range
+    # endpoints return nothing for dates before the account existed — so overshooting
+    # costs a few empty responses rather than an error.
+    backfill_years: int = Field(default=5, validation_alias="VITALS_BACKFILL_YEARS")
+
     # ── AI ──────────────────────────────────────────────────────────────────────
     # Everything above this line works with none of it set. The daily brief composes
     # itself in Python when there is no key, so an unconfigured deployment loses the

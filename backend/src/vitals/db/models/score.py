@@ -107,6 +107,11 @@ class ScoreContribution(Base):
     # because a waterfall that makes the reader do the multiplication is not a
     # waterfall, and because the model must never do arithmetic on these.
     effect: Mapped[float] = mapped_column(Float, nullable=False)
+    # What this line would add if it scored 100 from where it is. Stored beside
+    # `effect` and for the same reason: "what would help most" is a question the
+    # score already knows the answer to, and a screen that works it out by
+    # multiplying weights is a second place for that sum to go wrong.
+    headroom: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
 
     __table_args__ = (
         UniqueConstraint("user_id", "calendar_date", "metric", name="uq_score_contribution_day"),

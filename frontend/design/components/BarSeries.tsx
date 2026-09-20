@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import styles from "./BarSeries.module.css";
 
 export type Bar = {
@@ -39,7 +40,15 @@ export function BarSeries({ data, max, height = 44, axis }: BarSeriesProps) {
             <span
               key={index}
               className={[styles.bar, toneClass].filter(Boolean).join(" ")}
-              style={{ height: `${pct * 100}%` }}
+              data-motion="grow"
+              // Each bar grows a beat after the one before it, left to right, so
+              // the strip reads as a sequence rather than arriving as a block.
+              style={
+                {
+                  height: `${pct * 100}%`,
+                  animationDelay: `calc(var(--v-stagger) * ${index} / 2)`,
+                } as CSSProperties
+              }
               title={bar.label}
             />
           );
@@ -71,11 +80,20 @@ export function Sparkline({ data, width = 120, height = 36, area = true }: Spark
   const max = Math.max(...data);
   const span = max - min || 1;
   const step = width / (data.length - 1);
-  const points = data.map((value, index) => {
-    const x = index * step;
-    const y = height - ((value - min) / span) * height;
-    return `${x.toFixed(2)},${y.toFixed(2)}`;
-  });
+  const coords = data.map((value, index) => ({
+    x: index * step,
+    y: height - ((value - min) / span) * height,
+  }));
+  const points = coords.map(({ x, y }) => `${x.toFixed(2)},${y.toFixed(2)}`);
+
+  // The drawn length of the polyline, so the dash animation has something exact to
+  // work with. `getTotalLength()` would need a DOM node and a layout pass; the
+  // segments are already here, and summing them is the same number.
+  const length = coords.reduce((total, point, index) => {
+    if (index === 0) return 0;
+    const previous = coords[index - 1];
+    return total + Math.hypot(point.x - previous.x, point.y - previous.y);
+  }, 0);
 
   return (
     <svg
@@ -87,10 +105,18 @@ export function Sparkline({ data, width = 120, height = 36, area = true }: Spark
       {area ? (
         <polygon
           className={styles.sparkArea}
+          data-motion="fade"
           points={`0,${height} ${points.join(" ")} ${width},${height}`}
         />
       ) : null}
-      <polyline className={styles.sparkLine} points={points.join(" ")} />
+      <polyline
+        className={styles.sparkLine}
+        data-motion="draw"
+        points={points.join(" ")}
+        style={
+          { strokeDasharray: length, "--v-draw-from": `${length}px` } as CSSProperties
+        }
+      />
     </svg>
   );
 }

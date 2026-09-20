@@ -14,6 +14,9 @@
    * data rather than as a quiet day. */
   min-height: 3px;
   transition: height var(--v-dur-slow) var(--v-ease);
+  /* Grows from the baseline, which is where a bar chart's zero is — scaling from
+   * the middle would read as the whole strip inflating. */
+  transform-origin: bottom;
 }
 
 .muted {

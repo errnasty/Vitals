@@ -1,0 +1,61 @@
+/*
+ * Form fields, which the design system has no primitive for — every one of its
+ * components renders a number that Python computed, and this is the one screen
+ * where a person types instead. Feature-side rather than in `design/`, so the
+ * template stays what it is; every value below is a design token, so the fields
+ * follow the theme like everything else.
+ *
+ * Running text around these fields lives in `Prose.module.css`.
+ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v-s-2);
+  margin-bottom: var(--v-s-4);
+}
+
+.label {
+  font-size: var(--v-t-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--v-text-dim);
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--v-s-3) var(--v-s-4);
+  font-family: var(--v-font);
+  color: var(--v-text);
+  background: var(--v-surface-2);
+  border: 1px solid var(--v-line);
+  border-radius: var(--v-r-sm);
+  /* 16px minimum or iOS Safari zooms the page on focus, which on a login form
+     reads as the layout breaking. --v-t-body is 15px, so this is set in px. */
+  font-size: 16px;
+}
+
+.input:focus {
+  outline: 2px solid var(--v-accent);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.input::placeholder {
+  color: var(--v-text-faint);
+}
+
+/* The MFA code: a short string of digits, read back character by character. */
+.code {
+  font-family: var(--v-font-mono);
+  letter-spacing: 0.35em;
+  text-align: center;
+  font-size: 22px;
+}
+
+.actions {
+  display: flex;
+  gap: var(--v-s-3);
+  margin-top: var(--v-s-5);
+}

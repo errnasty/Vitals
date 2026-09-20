@@ -20,39 +20,28 @@ the least trustworthy number on the screen.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from vitals.analytics import canonical as gold
-from vitals.score.curves import band, percentile, ramp
-
-# value, personal history -> points, or None when it cannot be scored honestly.
-Scorer = Callable[[float, Sequence[float]], float | None]
+from vitals.score.curves import (
+    Scorer,
+    Target,
+    against_yourself,
+    band_at,
+    ramp_at,
+    target_of,
+)
 
 HOUR = 3600.0
 
 
-def anchored(fn: Callable[[float], float]) -> Scorer:
-    """Score against an external reference; the person's own history is irrelevant."""
-
-    def scorer(value: float, history: Sequence[float]) -> float | None:
-        return fn(value)
-
-    return scorer
-
-
-def personal(days: int) -> Scorer:
-    """Score against this person's own recent distribution of the same metric."""
-
-    def scorer(value: float, history: Sequence[float]) -> float | None:
-        return percentile(value, history)
-
-    scorer.history_days = days  # type: ignore[attr-defined]
-    return scorer
-
-
 def history_days(scorer: Scorer) -> int:
     return int(getattr(scorer, "history_days", 0))
+
+
+def target_for(scorer: Scorer) -> Target | None:
+    """The calibration this contribution scores against, for a screen to show."""
+    return target_of(scorer)
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +53,15 @@ class Contribution:
     # Shown in the waterfall and handed to the phase-7 model as the reason this line
     # exists. Never a number — the numbers come from the columns.
     rationale: str
+    # What actually moves this line, for the detail screen.
+    #
+    # Not every input is a dial. "Get your overnight HRV to +0.5 SD" is not advice;
+    # it is a reading of how your body responded to things you *can* change, and an
+    # app that presents it as a target is teaching you to chase a number you do not
+    # control. Where that is the case, this replaces the aim-for-X sentence entirely.
+    lever: str | None = None
+    # True when the value is observed rather than chosen — no target is offered.
+    observed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,15 +83,25 @@ RECOVERY = Pillar(
             weight=40,
             # Two standard deviations below your own baseline is the floor; anything at
             # or above it is full marks, because a high HRV is not a thing to chase.
-            scorer=anchored(lambda z: ramp(z, zero_at=-2.0, hundred_at=0.5)),
+            scorer=ramp_at(zero_at=-2.0, hundred_at=0.5),
             rationale="the clearest single overnight signal of accumulated stress",
+            lever=(
+                "Not something to aim at directly — it answers to sleep, alcohol, "
+                "illness and how hard the last few days were."
+            ),
+            observed=True,
         ),
         Contribution(
             metric=gold.RHR_DEVIATION,
             label="Resting heart rate",
             weight=30,
-            scorer=anchored(lambda z: ramp(z, zero_at=2.0, hundred_at=-0.5)),
+            scorer=ramp_at(zero_at=2.0, hundred_at=-0.5),
             rationale="an elevated resting rate tracks strain, illness and poor sleep",
+            lever=(
+                "Follows the same things HRV does, a day or two behind. Worth "
+                "watching rather than targeting."
+            ),
+            observed=True,
         ),
         Contribution(
             metric=gold.TSB,
@@ -101,8 +109,9 @@ RECOVERY = Pillar(
             weight=30,
             # Deeply negative is a body carrying more fatigue than fitness. Above zero
             # is rested; whether that has gone too far is the training pillar's problem.
-            scorer=anchored(lambda tsb: ramp(tsb, zero_at=-30.0, hundred_at=5.0)),
+            scorer=ramp_at(zero_at=-30.0, hundred_at=5.0),
             rationale="fitness minus fatigue: what the last six weeks left you with",
+            lever="Rises on easy days and rest, falls on hard ones. Easier weeks lift it.",
         ),
     ),
 )
@@ -118,15 +127,17 @@ SLEEP = Pillar(
             weight=35,
             # The 7-9 hour adult recommendation, scored on the week rather than the
             # night, because one short night is noise and a short week is not.
-            scorer=anchored(lambda s: ramp(s, zero_at=5 * HOUR, hundred_at=8 * HOUR)),
+            scorer=ramp_at(zero_at=5 * HOUR, hundred_at=8 * HOUR),
             rationale="the seven-night average, against the adult recommendation",
+            lever="It is a seven-night average, so one long night moves it a seventh as far.",
         ),
         Contribution(
             metric=gold.SLEEP_DEBT,
             label="Sleep debt",
             weight=25,
-            scorer=anchored(lambda s: ramp(s, zero_at=14 * HOUR, hundred_at=0.0)),
+            scorer=ramp_at(zero_at=14 * HOUR, hundred_at=0.0),
             rationale="a fortnight of shortfalls, which do not clear with one long night",
+            lever="Only clears by sleeping more than you need, over several nights.",
         ),
         Contribution(
             metric=gold.SLEEP_CONSISTENCY,
@@ -134,15 +145,17 @@ SLEEP = Pillar(
             weight=25,
             # Regularity predicts outcomes independently of how long you sleep, which
             # is why it carries the same weight as the debt.
-            scorer=anchored(lambda m: ramp(m, zero_at=90.0, hundred_at=20.0)),
+            scorer=ramp_at(zero_at=90.0, hundred_at=20.0),
             rationale="how much your sleep midpoint moves; regularity matters on its own",
+            lever="The cheapest line here to move: same bedtime, including weekends.",
         ),
         Contribution(
             metric=gold.SLEEP_EFFICIENCY,
             label="Sleep efficiency",
             weight=15,
-            scorer=anchored(lambda pct: ramp(pct, zero_at=70.0, hundred_at=90.0)),
+            scorer=ramp_at(zero_at=70.0, hundred_at=90.0),
             rationale="time asleep against time in bed; 85% is the usual clinical line",
+            lever="Usually improves by going to bed when tired rather than earlier.",
         ),
     ),
 )
@@ -158,22 +171,25 @@ TRAINING = Pillar(
             weight=40,
             # No absolute anchor exists: a chronic load of 80 is a strong base for one
             # person and a deload for another. Six months of your own is the scale.
-            scorer=personal(180),
+            scorer=against_yourself(180),
             rationale="chronic training load, against your own last six months",
+            lever="Built by consistent weeks, not single sessions. It takes about six to move.",
         ),
         Contribution(
             metric=gold.ACWR,
             label="Load balance",
             weight=35,
-            scorer=anchored(lambda r: band(r, low=0.8, high=1.3, margin=0.5)),
+            scorer=band_at(low=0.8, high=1.3, margin=0.5),
             rationale="this week against the last six; both a spike and a collapse cost",
+            lever="Change this week's volume, not the plan — it is a ratio to your own base.",
         ),
         Contribution(
             metric=gold.MONOTONY,
             label="Variety",
             weight=25,
-            scorer=anchored(lambda m: ramp(m, zero_at=2.5, hundred_at=1.0)),
+            scorer=ramp_at(zero_at=2.5, hundred_at=1.0),
             rationale="Foster's monotony: the same session every day is its own risk",
+            lever="Make the hard days harder and the easy days easier, rather than adding volume.",
         ),
     ),
 )
@@ -189,15 +205,17 @@ LONGEVITY = Pillar(
             weight=40,
             # Absolute VO2max norms are age- and sex-adjusted and this app holds
             # neither, so the honest comparison is against your own year.
-            scorer=personal(365),
+            scorer=against_yourself(365),
             rationale="the strongest single predictor here, against your own year",
+            lever="Moves on a scale of months, and responds to intensity more than volume.",
         ),
         Contribution(
             metric=gold.ACTIVITY_GUIDELINE_PCT,
             label="Weekly activity",
             weight=35,
-            scorer=anchored(lambda pct: ramp(pct, zero_at=0.0, hundred_at=100.0)),
+            scorer=ramp_at(zero_at=0.0, hundred_at=100.0),
             rationale="against the WHO's 150 weekly minutes, vigorous counting double",
+            lever="Vigorous minutes count double, so a short hard session goes twice as far.",
         ),
         Contribution(
             metric=gold.STEPS_7D,
@@ -205,8 +223,9 @@ LONGEVITY = Pillar(
             weight=25,
             # The all-cause mortality curve flattens around 7-8k/day; past that there
             # is little left to gain, so there is no reward for chasing 20,000.
-            scorer=anchored(lambda steps: ramp(steps, zero_at=2000.0, hundred_at=8000.0)),
+            scorer=ramp_at(zero_at=2000.0, hundred_at=8000.0),
             rationale="where the mortality curve flattens, not a round number",
+            lever="Full marks at 8,000 — there is no reward here for chasing 20,000.",
         ),
     ),
 )

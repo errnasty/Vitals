@@ -16,8 +16,12 @@ written as "7.3 hours" — is rejected, retried once with the fault named, and f
 that the brief is composed in Python instead. It works with no API key at all.
 See [docs/ai.md](docs/ai.md).
 
-Phases 0-7 are complete in code and covered by CI, and deployed on Railway. Still
-pending: a real `vitals garmin login`, and the FIT parsing half of phase 3.
+Phases 0-7 are complete in code and covered by CI, and deployed on Railway. Garmin can
+be connected either from a terminal (`vitals garmin login`) or from the app itself at
+`/connect`, for when the only device to hand is a phone — see
+[docs/garmin.md](docs/garmin.md) for why the terminal is still the better one. Still
+pending: a first login against a live Garmin account, and the FIT parsing half of
+phase 3.
 
 | Phase | Deliverable | State |
 |---|---|---|

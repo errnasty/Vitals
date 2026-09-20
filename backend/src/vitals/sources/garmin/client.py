@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from garminconnect import (
@@ -34,6 +35,9 @@ from vitals.logging import get_logger
 from vitals.sources.garmin.governor import RateGovernor
 
 log = get_logger(__name__)
+
+# What `login()` returns in place of a client when a code is needed.
+NEEDS_MFA = "needs_mfa"
 
 
 class GarminError(RuntimeError):
@@ -114,6 +118,97 @@ class GarminClient:
 
         self._governor.record_success()
         return result
+
+
+@dataclass(frozen=True, slots=True)
+class MFARequired:
+    """Garmin wants a code, and `client_state` is everything needed to resume.
+
+    The state is returned rather than waited on. `prompt_mfa` blocks inside
+    `login()` until a callback produces a code, which is fine for a terminal and
+    impossible for a web request — the HTTP response has to go back before the user
+    can read their code. `return_on_mfa` hands the half-finished login out instead,
+    so it can be stored and picked up by a second request minutes later.
+    """
+
+    client_state: dict[str, Any]
+
+
+async def begin_login(
+    email: str,
+    password: str,
+    *,
+    governor: RateGovernor,
+    is_cn: bool = False,
+) -> GarminClient | MFARequired:
+    """First half of an interactive login: credentials in, tokens or an MFA demand out.
+
+    Same SSO endpoint and the same Cloudflare exposure as `login_with_credentials` —
+    see the module docstring. Splitting it in two changes when the code is collected,
+    not where the request comes from.
+    """
+    garmin = Garmin(
+        email=email,
+        password=password,
+        is_cn=is_cn,
+        return_on_mfa=True,
+        verify_login=True,
+    )
+    try:
+        status, state = await asyncio.to_thread(garmin.login)
+    except GarminConnectTooManyRequestsError as exc:
+        governor.record_rate_limited()
+        raise RateLimited("Garmin rate-limited the login; wait before retrying") from exc
+    except GarminConnectAuthenticationError as exc:
+        raise NeedsReauth(f"Garmin rejected the credentials: {exc}") from exc
+    except GarminConnectConnectionError as exc:
+        raise GarminError(f"could not reach Garmin: {exc}") from exc
+
+    if status == NEEDS_MFA:
+        if not isinstance(state, dict):
+            # The library promises a resumable state alongside the demand. Without
+            # it there is nothing to resume from, and pretending otherwise would
+            # strand the user on a code entry screen that can never succeed.
+            raise GarminError("Garmin asked for an MFA code but returned no resumable state")
+        return MFARequired(client_state=state)
+
+    return GarminClient(garmin, governor)
+
+
+async def finish_login(
+    email: str,
+    password: str,
+    client_state: dict[str, Any],
+    code: str,
+    *,
+    governor: RateGovernor,
+    is_cn: bool = False,
+) -> GarminClient:
+    """Second half: the code plus the stored state, on a fresh client.
+
+    Rebuilt rather than resumed on the original object, because the two halves are
+    different HTTP requests and may well be different processes — a Railway container
+    is free to sleep between them. Everything that carries the login forward is in
+    `client_state`; the credentials are passed back only so the rebuilt client is
+    identical to the one that started.
+    """
+    garmin = Garmin(
+        email=email,
+        password=password,
+        is_cn=is_cn,
+        return_on_mfa=True,
+        verify_login=True,
+    )
+    try:
+        await asyncio.to_thread(garmin.resume_login, client_state, code)
+    except GarminConnectTooManyRequestsError as exc:
+        governor.record_rate_limited()
+        raise RateLimited("Garmin rate-limited the login; wait before retrying") from exc
+    except GarminConnectAuthenticationError as exc:
+        raise NeedsReauth(f"Garmin rejected the code: {exc}") from exc
+    except GarminConnectConnectionError as exc:
+        raise GarminError(f"could not reach Garmin: {exc}") from exc
+    return GarminClient(garmin, governor)
 
 
 async def login_with_credentials(

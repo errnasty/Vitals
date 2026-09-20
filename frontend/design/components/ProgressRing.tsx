@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import styles from "./ProgressRing.module.css";
 
 export type ProgressRingProps = {
@@ -42,8 +42,12 @@ export function ProgressRing({
           fill="none"
           strokeWidth={thickness}
         />
+        {/* Fills from empty on mount; `--v-draw-from` is the offset at which the
+            ring shows nothing, and the keyframe slides it to the resting value. */}
         <circle
           className={styles.value}
+          data-motion="draw"
+          style={{ "--v-draw-from": `${circumference}px` } as CSSProperties}
           cx={centre}
           cy={centre}
           r={radius}

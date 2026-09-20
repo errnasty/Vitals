@@ -53,6 +53,7 @@ export type Today = {
   headlines: HeadlineView[];
   trend: number[];
   brief: BriefView | null;
+  source_connected: boolean;
   empty_reason: string | null;
 };
 
@@ -89,6 +90,85 @@ export type Trends = {
   days: number;
   score: SeriesPoint[];
   series: SeriesView[];
+};
+
+export type BackfillView = {
+  running: boolean;
+  done: boolean;
+  /** Already a percentage string — Python does the arithmetic. */
+  progress: string | null;
+  since: string | null;
+  reached: string | null;
+  detail: string | null;
+};
+
+export type GarminStatus = {
+  connected: boolean;
+  state: string;
+  detail: string | null;
+  awaiting_mfa: boolean;
+  last_success_at: string | null;
+  locked_until: string | null;
+  history: BackfillView | null;
+};
+
+export type ConnectResult = {
+  status: string;
+  detail: string;
+  display_name: string | null;
+};
+
+export type FactorView = {
+  metric: string;
+  label: string;
+  rationale: string;
+  value: string;
+  points: string;
+  points_value: number;
+  coverage: string;
+  effect: string;
+  headroom: string;
+  headroom_value: number;
+  basis: string;
+  target: string | null;
+  scale: string | null;
+  advice: string | null;
+};
+
+export type PillarDetail = {
+  name: string;
+  label: string;
+  display: string;
+  value: number;
+  coverage: string;
+  trusted: boolean;
+  weight: string;
+  summary: string;
+  factors: FactorView[];
+};
+
+export type PillarResponse = { date: string; pillar: PillarDetail };
+
+export type PillarLink = {
+  name: string;
+  label: string;
+  display: string;
+  value: number;
+  coverage: string;
+  weight: string;
+  summary: string;
+};
+
+export type ScoreDetail = {
+  date: string;
+  value: number;
+  display: string;
+  caption: string;
+  coverage: string;
+  trusted: boolean;
+  method: { headline: string; steps: string[]; coverage_floor: string };
+  pillars: PillarLink[];
+  opportunities: FactorView[];
 };
 
 /** Either the payload, or a sentence a person can act on. */
@@ -135,7 +215,62 @@ async function get<T>(path: string): Promise<Result<T>> {
   }
 }
 
+/**
+ * POST, for the two endpoints that change something.
+ *
+ * Separate from `get` because the failures differ: a 401 here means Garmin rejected
+ * the credentials, not that our own token expired, and the API's own sentence is the
+ * one worth showing. Read it out of the body rather than substituting a generic line.
+ */
+async function post<T>(path: string, body: unknown): Promise<Result<T>> {
+  if (!API_TOKEN) {
+    return {
+      ok: false,
+      error: "No API token configured. Set VITALS_API_TOKEN on the web service.",
+    };
+  }
+
+  try {
+    const response = await fetch(`${API_URL}${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload: { detail?: string }) => payload.detail)
+        .catch(() => undefined);
+      return { ok: false, error: detail ?? `The API returned ${response.status}.` };
+    }
+
+    return { ok: true, data: (await response.json()) as T };
+  } catch (error) {
+    return {
+      ok: false,
+      error: `Could not reach the API at ${API_URL} — ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    };
+  }
+}
+
 export const fetchToday = () => get<Today>("/today");
+export const fetchScoreDetail = (day?: string) =>
+  get<ScoreDetail>(`/score/detail${day ? `?day=${day}` : ""}`);
+export const fetchPillar = (name: string, day?: string) =>
+  get<PillarResponse>(`/score/pillar/${name}${day ? `?day=${day}` : ""}`);
+export const fetchGarminStatus = () => get<GarminStatus>("/garmin/status");
+export const postGarminConnect = (email: string, password: string) =>
+  post<ConnectResult>("/garmin/connect", { email, password });
+export const postGarminMfa = (code: string) =>
+  post<ConnectResult>("/garmin/connect/mfa", { code });
+export const postGarminDisconnect = () => post<GarminStatus>("/garmin/disconnect", {});
 export const fetchExplain = (day?: string) =>
   get<Explain>(`/score/explain${day ? `?day=${day}` : ""}`);
 export const fetchTrends = (days = 90) => get<Trends>(`/trends?days=${days}`);

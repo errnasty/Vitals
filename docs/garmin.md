@@ -41,6 +41,51 @@ you do roughly annually.
 The command warns if `ENVIRONMENT` is not `local`. Nothing stops you overriding that;
 the warning is the point.
 
+### ...and the same login from the app, when there is no laptop
+
+`/connect` does the same thing from a phone. It exists because a connector you cannot
+connect from the device you have on you is not much of a connector — not because the
+IP problem went away. The request leaves Railway, Cloudflare sees a datacenter, and
+the screen says so before you type anything.
+
+The mechanics are the interesting part. `prompt_mfa` blocks inside `login()` until a
+callback produces a code, which is fine for a terminal and impossible for a web
+request: the HTTP response has to go back before the user can read their code. So the
+web path uses the library's `return_on_mfa`, which hands the half-finished login out
+as a `client_state` instead, and `resume_login(client_state, code)` picks it up. Two
+requests, minutes apart, possibly different processes — a Railway container is free to
+sleep in between.
+
+Which means nothing can be held in memory:
+
+| | |
+|---|---|
+| Where the half-finished login lives | `credential`, encrypted, under `garmin.pending_login` |
+| How long | 10 minutes, then it is deleted |
+| What it holds | the resumable state, the email, and the password |
+| Attempt cap | 5 failures, then a 15-minute lockout |
+
+The password is the uncomfortable one, and it is deliberate: rebuilding the client for
+the resume needs it. It is encrypted under the same Fernet key as everything else and
+deleted the moment the login resolves either way. That is a smaller promise than
+`--store-password`, which keeps it indefinitely on purpose — but it is not *no*
+promise, and if that trade is not worth it to you, use the CLI.
+
+The attempt cap is the part that actually protects the account. A web form turns "one
+careful annual login" into something that can be retried thirty times in a minute, and
+thirty SSO attempts from a datacenter IP is how an account gets locked.
+
+```
+POST /garmin/connect       {email, password}  -> "connected" | "mfa_required"
+POST /garmin/connect/mfa   {code}             -> "connected"
+GET  /garmin/status                           -> connected, awaiting_mfa, locked_until
+POST /garmin/disconnect                       -> forgets the tokens, keeps the data
+```
+
+`GET /today` carries `source_connected` too, so the home screen can offer the link in
+every state — including the one where there is plenty of old data on the page and
+nothing new has arrived for a week.
+
 ### Tokens have to survive the container
 
 Railway's filesystem is ephemeral and the library caches tokens to a file, so a naive
@@ -172,3 +217,46 @@ ten minutes.
 endpoints downsample away. It lands in phase 3, together with a Railway bucket and the
 `fitdecode` parser — there is nowhere durable to put the bytes until then, and Railway's
 filesystem is not it.
+
+## The history pull, which starts the moment you connect
+
+Connecting a source and then showing an empty dashboard is a strange thing to do to
+someone who just handed over their password, so the backfill starts at connect rather
+than at the next cron tick. It cannot happen *in* the request: a few hundred
+rate-governed calls is around ten minutes, and nothing should hold a connection open
+that long.
+
+So it is a **cursor**, not an operation. `source_connection.backfill_cursor` is the
+oldest day actually fetched; each pass walks it backwards a chunk at a time and saves
+after every chunk.
+
+```
+connect ──▶ write the cursor, return ──▶ background task works it for ≤5 min
+                                              │ budget spent, or rate limited
+                                              ▼
+                              next `vitals sync` resumes from the same day
+```
+
+| | |
+|---|---|
+| How far back | `VITALS_BACKFILL_YEARS`, default 5 |
+| Chunk | 180 days, saved after each |
+| Budget per pass | 5 minutes, then it pauses |
+| Direction | **backwards** — recent weeks first |
+| On failure | the cursor does not move, so the window is retried, never skipped |
+
+Backwards is the point: the most recent weeks are the ones the dashboard needs to show
+anything at all, so they arrive within a minute or two and the deep history fills in
+behind them. Re-fetching a window costs requests and writes nothing, because bronze is
+hash-deduped — which is what makes an interrupted pull safe to simply run again.
+
+### What it will not get you
+
+- **It is not instant.** The governor holds requests 1–3 seconds apart on purpose; a
+  five-year pull is minutes of mostly waiting. That is the rate limit, not the app.
+- **Deep history is range data only.** `plan_backfill` uses the range endpoints, so
+  years of per-day detail (sleep stages, stress samples) are not retrievable — those
+  have no range variant, and covering them would be one request per endpoint per day.
+  That detail accrues from the day you connect, forwards.
+- **Garmin has nothing from before your account existed.** Overshooting costs a few
+  empty responses rather than an error, which is why the reach is set in years.

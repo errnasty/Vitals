@@ -44,7 +44,40 @@ async def run_sync(
         outcome = await run_incremental(session, email=email, days=days)
         if normalize and outcome.ok:
             await _refresh_derived(session, source=source, email=email, days=days)
+        if outcome.ok:
+            await _resume_backfill(session, email=email)
         return outcome
+
+
+async def _resume_backfill(session: AsyncSession, *, email: str | None) -> None:
+    """Carry on any history pull the connect-time run did not finish.
+
+    A backfill is a cursor rather than an operation, so there is nothing to recover
+    here — whatever is left is simply the next window. Runs after the incremental
+    sync so today's data is never waiting behind 2019's, and never fails the sync:
+    a stalled history pull is a thinner dashboard, not a broken one.
+    """
+    from vitals.ingest import backfill
+
+    try:
+        user = await resolve_user(session, email=email)
+    except NoSuchUser:
+        return
+
+    try:
+        result = await backfill.run(session, user_id=user.id)
+    except Exception as exc:  # noqa: BLE001 - reported, never fatal to the sync
+        log.error("sync.backfill_failed", error=f"{type(exc).__name__}: {exc}")
+        return
+
+    if result.chunks:
+        log.info(
+            "sync.backfill_advanced",
+            chunks=result.chunks,
+            requests=result.requests,
+            done=result.done,
+            reached=result.cursor.isoformat() if result.cursor else None,
+        )
 
 
 async def _refresh_derived(

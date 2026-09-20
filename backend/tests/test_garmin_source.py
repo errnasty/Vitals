@@ -360,3 +360,36 @@ async def test_the_window_size_is_honoured(
         .all()
     )
     assert len(rows) == days
+
+
+async def test_one_endpoint_raising_does_not_kill_the_run(
+    pg_session: AsyncSession, pg_user: AppUser
+) -> None:
+    """An unofficial API wrapper can raise anything, and one surprise must cost one
+    endpoint rather than the whole day.
+
+    This is the shape of a real outage. `get_race_predictions` accepts either no
+    arguments or all three, and the plan was handing it a range without `_type`:
+    a plain `ValueError`, not a `GarminError`, so nothing in the connector caught
+    it. It escaped the run, escaped the CLI, and killed the cron process — every
+    endpoint after it in the plan went unfetched and the service sat in CRASHED.
+    """
+    boom = ValueError("you must either provide all parameters or no parameters")
+    client = FakeGarmin(errors={"get_rhr_daily": boom})
+    source = await _source(pg_session, pg_user, client)
+
+    outcome = await source.incremental(days=1)
+
+    # The run finished and reported it, rather than disappearing with it.
+    assert outcome.status in ("success", "partial")
+    assert outcome.detail is not None and "rhr_daily" in outcome.detail
+    # Every other endpoint in the plan still ran, and its data still landed.
+    assert client.count("get_rhr_daily") == 1
+    assert len(client.calls) > 1
+    stored = (
+        (await pg_session.execute(select(RawPayload).where(RawPayload.user_id == pg_user.id)))
+        .scalars()
+        .all()
+    )
+    assert stored
+    assert not any(row.endpoint == "rhr_daily" for row in stored)

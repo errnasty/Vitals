@@ -193,13 +193,33 @@ class GarminSource:
     ) -> None:
         try:
             payload = await client.call(call.method, *call.args, **call.kwargs)
+        except (NeedsReauth, RateLimited):
+            # The two that mean stop: the credentials are bad, or Garmin has asked
+            # us to back off. Carrying on past either is how an account gets locked.
+            raise
         except GarminError as exc:
-            if isinstance(exc, NeedsReauth | RateLimited):
-                raise
             # One endpoint failing is not the run failing: the rest of the window is
             # still worth having, and bronze makes the missing piece re-fetchable.
             log.warning("garmin.endpoint_failed", endpoint=call.endpoint, error=str(exc))
             progress.failures.append(f"{call.endpoint}: {exc}")
+            return
+        except Exception as exc:  # noqa: BLE001 - see below
+            # Anything the library throws that is not one of ours.
+            #
+            # This is not defensive programming for its own sake. `get_race_predictions`
+            # accepts either no arguments or all three, and a range without `_type`
+            # raises a plain `ValueError` — which escaped the connector entirely and
+            # killed the cron process, so *every* endpoint after it in the plan went
+            # unfetched and the service sat in CRASHED. An unofficial API wrapper can
+            # raise anything; one endpoint's surprise must cost that endpoint, not the
+            # run and not the day's data.
+            log.error(
+                "garmin.endpoint_crashed",
+                endpoint=call.endpoint,
+                method=call.method,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            progress.failures.append(f"{call.endpoint}: {type(exc).__name__}: {exc}")
             return
 
         if payload is None or payload == [] or payload == {}:

@@ -72,6 +72,7 @@ def _range_calls(endpoint: Endpoint, start: date, end: date) -> list[PlannedCall
                     endpoint.name,
                     endpoint.method,
                     (_iso(chunk_start), _iso(chunk_end)),
+                    dict(endpoint.kwargs),
                     window=(chunk_start, chunk_end),
                 )
             )

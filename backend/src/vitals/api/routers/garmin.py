@@ -109,8 +109,21 @@ class BackfillView(BaseModel):
 
 
 class StatusResponse(BaseModel):
+    # True whenever usable tokens are stored — not "the last sync went well".
+    #
+    # These were the same field once, and the bug it caused is the reason they are
+    # not. A rate-limited run marks the connection `degraded`; the screen read that
+    # as disconnected and offered the login form again; logging in again is a fresh
+    # SSO attempt from a datacenter IP, which is the single most likely way to get
+    # a Garmin account locked. The app was steering people into the one thing it
+    # exists to avoid.
     connected: bool
     state: str
+    # Only when there is genuinely nothing to sync with: no tokens, or Garmin has
+    # rejected the ones we hold. Never merely because a run had trouble.
+    needs_login: bool = False
+    # What the last run made of it, when that is worth saying.
+    trouble: str | None = None
     detail: str | None = None
     # Set while a login is waiting on a code, so a reloaded page resumes where it was
     # rather than starting again and burning another SSO request.
@@ -294,16 +307,32 @@ async def connection_status(user: CurrentUserDep, session: SessionDep) -> Status
     pending = await _pending(vault, user.id)
     locked = _locked_until(await _attempts(vault, user.id))
 
-    if has_tokens and connection is not None and connection.status == "active":
-        state = "connected"
-    elif has_tokens:
-        state = connection.status if connection is not None else "connected"
-    else:
+    status_now = connection.status if connection is not None else None
+    if not has_tokens:
         state = "disconnected"
+    elif status_now in (None, "active"):
+        state = "connected"
+    else:
+        state = status_now
+
+    # `degraded` means the last run backed off — rate limited, or a run of failures.
+    # The tokens are untouched and the next run will try again, so this is a notice,
+    # not a reason to send anyone back through SSO.
+    trouble = None
+    if state == "degraded":
+        trouble = (
+            connection.status_detail
+            if connection is not None and connection.status_detail
+            else "The last sync backed off. It will try again on its own."
+        )
+    elif state == "needs_reauth":
+        trouble = "Garmin rejected the stored tokens, so signing in again is the fix."
 
     return StatusResponse(
-        connected=has_tokens and state == "connected",
+        connected=has_tokens,
         state=state,
+        needs_login=not has_tokens or state == "needs_reauth",
+        trouble=trouble,
         detail=connection.status_detail if connection is not None else None,
         awaiting_mfa=pending is not None,
         last_success_at=connection.last_success_at if connection is not None else None,
@@ -398,6 +427,67 @@ async def submit_mfa(
     return ConnectResponse(status="connected", detail=CONNECTED_DETAIL, display_name=name)
 
 
+class SyncResponse(BaseModel):
+    started: bool
+    detail: str
+
+
+async def run_sync_now(user_id: uuid.UUID) -> None:
+    """An incremental sync and a slice of history, on its own session.
+
+    The same work the cron does, minus the schedule. It exists because the cron runs
+    every six hours and "did my fix work" is a question worth being able to answer
+    now rather than at the next tick.
+    """
+    from vitals.db.session import get_sessionmaker
+    from vitals.ingest.pipeline import build_garmin_source
+
+    window = 7
+    try:
+        async with get_sessionmaker()() as session:
+            # Built for this user explicitly rather than resolved by email: the
+            # request already knows who is asking, and `resolve_user` guessing from
+            # a single-user shortcut is not something a button should rely on.
+            source = build_garmin_source(session, user_id=user_id)
+            outcome = await source.incremental(days=window)
+            log.info("garmin.manual_sync", status=outcome.status, stored=outcome.stored)
+            if not outcome.ok:
+                return
+
+            since = datetime.now(UTC).date() - timedelta(days=window)
+            await backfill.rebuild(session, user_id=user_id, since=since)
+            await backfill.run(session, user_id=user_id)
+    except Exception as exc:  # noqa: BLE001 - a background task has nobody to raise to
+        log.error("garmin.manual_sync_failed", error=f"{type(exc).__name__}: {exc}")
+
+
+@router.post("/sync", response_model=SyncResponse)
+async def sync_now(
+    user: CurrentUserDep, session: SessionDep, background: BackgroundTasks
+) -> SyncResponse:
+    """Pull now rather than waiting for the cron.
+
+    Returns immediately: a sync is a minute or two of governed requests, which is
+    longer than a request should live. Watch `/garmin/status` for where it got to.
+    """
+    vault = _vault(session)
+    if await vault.get(user.id, GARMIN_TOKENS) is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Garmin is not connected.")
+
+    # The governor asked for quiet. Starting a run anyway is how a rate limit becomes
+    # a lockout, and a button is not a good enough reason to override it.
+    connection = await connection_for(session, user.id)
+    cooldown = connection.cooldown_until if connection is not None else None
+    if cooldown is not None and cooldown > datetime.now(UTC):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Garmin asked us to back off. The next scheduled sync will pick it up.",
+        )
+
+    background.add_task(run_sync_now, user.id)
+    return SyncResponse(started=True, detail="Syncing. This takes a minute or two.")
+
+
 @router.post("/disconnect", response_model=StatusResponse)
 async def disconnect(user: CurrentUserDep, session: SessionDep) -> StatusResponse:
     """Forget the tokens. Bronze is untouched — this is a credential, not the data."""
@@ -412,4 +502,6 @@ async def disconnect(user: CurrentUserDep, session: SessionDep) -> StatusRespons
         await session.commit()
 
     log.info("garmin.disconnected", via="api")
-    return StatusResponse(connected=False, state="disconnected", detail="Disconnected.")
+    return StatusResponse(
+        connected=False, state="disconnected", needs_login=True, detail="Disconnected."
+    )

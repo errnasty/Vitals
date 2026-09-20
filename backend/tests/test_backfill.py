@@ -51,7 +51,7 @@ def no_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
     async def noop(*args: Any, **kwargs: Any) -> None:
         return None
 
-    monkeypatch.setattr(backfill, "_rebuild", noop)
+    monkeypatch.setattr(backfill, "rebuild", noop)
 
 
 @pytest.fixture

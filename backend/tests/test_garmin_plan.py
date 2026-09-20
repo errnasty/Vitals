@@ -154,3 +154,53 @@ def test_range_endpoints_declare_a_span_limit() -> None:
     for endpoint in RANGE_ENDPOINTS:
         if endpoint.kind in (Kind.RANGE, Kind.WEEKLY):
             assert endpoint.max_span_days is not None, endpoint.name
+
+
+# ── the arguments the library actually accepts ──────────────────────────────────
+
+
+def test_every_planned_call_matches_the_library_s_signature() -> None:
+    """The plan is only useful if the calls in it are callable.
+
+    Worth being precise about what this does and does not buy: it catches a method
+    renamed or dropped by a library upgrade, and an argument count that cannot bind.
+    It would **not** have caught the `get_race_predictions` crash — a start and an
+    end bind to that signature perfectly well, and the refusal happens inside the
+    method body. The test below is the one that covers that, and
+    `test_garmin_source.py` covers what happens when a call raises anyway.
+    """
+    import inspect
+    from datetime import date
+
+    from garminconnect import Garmin
+
+    from vitals.sources.garmin.plan import plan_backfill, plan_incremental
+
+    calls = plan_incremental(today=date(2026, 9, 20)) + plan_backfill(
+        start=date(2025, 9, 20), end=date(2026, 9, 20)
+    )
+    assert calls
+
+    for call in calls:
+        method = getattr(Garmin, call.method, None)
+        assert method is not None, f"{call.method} is not a Garmin method"
+        signature = inspect.signature(method)
+        # `self` is bound at call time; everything else has to fit.
+        signature.bind(None, *call.args, **call.kwargs)
+
+
+def test_race_predictions_is_given_the_type_it_demands() -> None:
+    """All three parameters or none — a range without `_type` is the crash above."""
+    from datetime import date
+
+    from vitals.sources.garmin.plan import plan_backfill
+
+    predictions = [
+        call
+        for call in plan_backfill(start=date(2025, 9, 20), end=date(2026, 9, 20))
+        if call.method == "get_race_predictions"
+    ]
+    assert predictions
+    for call in predictions:
+        assert call.kwargs.get("_type") == "daily"
+        assert len(call.args) == 2

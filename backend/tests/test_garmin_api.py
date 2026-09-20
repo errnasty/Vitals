@@ -80,6 +80,10 @@ def _fernet_key() -> str:
     return Fernet.generate_key().decode()
 
 
+async def _noop_pull(user_id: uuid.UUID) -> None:
+    """The history pull has its own tests; these are about the connection state."""
+
+
 def _auth() -> dict[str, str]:
     return {"Authorization": f"Bearer {hs256()}"}
 
@@ -143,6 +147,9 @@ async def test_status_is_disconnected_before_anything_happens(
         "awaiting_mfa": False,
         "last_success_at": None,
         "locked_until": None,
+        # Nothing stored, so signing in is genuinely the next step.
+        "needs_login": True,
+        "trouble": None,
         # No history has been asked for, so there is nothing to report on it.
         "history": None,
     }
@@ -503,3 +510,159 @@ async def test_a_failed_history_pull_never_reaches_the_user(
 
     monkeypatch.setattr(bf, "run", explode)
     await router.pull_history(USER_ID)  # must not raise
+
+
+# ── a bad sync must not send anyone back through SSO ────────────────────────────
+
+
+async def _degrade(session: AsyncSession, status: str, detail: str) -> None:
+    connection = await session.scalar(
+        select(SourceConnection).where(SourceConnection.user_id == USER_ID)
+    )
+    assert connection is not None
+    connection.status = status
+    connection.status_detail = detail
+    await session.commit()
+
+
+async def test_a_degraded_sync_leaves_you_connected(
+    client: ClientFactory, user: AppUser, pg_session: AsyncSession, monkeypatch
+) -> None:
+    """The bug this exists to stop: a rate-limited run marked the connection
+    `degraded`, the screen read that as disconnected and offered the login form, and
+    signing in again is a fresh SSO attempt from a datacenter IP — the single most
+    likely way to get a Garmin account locked. The app was steering people into the
+    one thing it exists to avoid.
+    """
+    stub_begin(monkeypatch, FakeClient())
+    monkeypatch.setattr(router, "pull_history", _noop_pull)
+
+    async with client() as http:
+        await http.post(
+            "/garmin/connect",
+            json={"email": GARMIN_EMAIL, "password": PASSWORD},
+            headers=_auth(),
+        )
+        await _degrade(pg_session, "degraded", "Garmin rate-limited the run")
+        body = (await http.get("/garmin/status", headers=_auth())).json()
+
+    assert body["connected"] is True
+    assert body["needs_login"] is False
+    assert body["state"] == "degraded"
+    assert "rate-limited" in body["trouble"]
+
+
+async def test_rejected_tokens_are_the_one_case_that_does_ask_again(
+    client: ClientFactory, user: AppUser, pg_session: AsyncSession, monkeypatch
+) -> None:
+    """`needs_reauth` means Garmin refused the stored tokens. Signing in again is
+    genuinely the fix, so this is the one state that should ask."""
+    stub_begin(monkeypatch, FakeClient())
+    monkeypatch.setattr(router, "pull_history", _noop_pull)
+
+    async with client() as http:
+        await http.post(
+            "/garmin/connect",
+            json={"email": GARMIN_EMAIL, "password": PASSWORD},
+            headers=_auth(),
+        )
+        await _degrade(pg_session, "needs_reauth", "tokens rejected")
+        body = (await http.get("/garmin/status", headers=_auth())).json()
+
+    assert body["needs_login"] is True
+    assert body["state"] == "needs_reauth"
+
+
+async def test_with_no_tokens_at_all_it_asks(client: ClientFactory, user: AppUser) -> None:
+    async with client() as http:
+        body = (await http.get("/garmin/status", headers=_auth())).json()
+
+    assert body["connected"] is False
+    assert body["needs_login"] is True
+    assert body["trouble"] is None
+
+
+async def test_connecting_survives_a_page_change(
+    client: ClientFactory, user: AppUser, monkeypatch
+) -> None:
+    """Nothing about the connection lives in a session or a cookie — it is a row.
+    Reading it back on an unrelated request is the whole test."""
+    stub_begin(monkeypatch, FakeClient())
+    monkeypatch.setattr(router, "pull_history", _noop_pull)
+
+    async with client() as http:
+        await http.post(
+            "/garmin/connect",
+            json={"email": GARMIN_EMAIL, "password": PASSWORD},
+            headers=_auth(),
+        )
+        # Somewhere else entirely, then back.
+        await http.get("/today", headers=_auth())
+        body = (await http.get("/garmin/status", headers=_auth())).json()
+
+    assert body["connected"] is True
+    assert body["needs_login"] is False
+
+
+async def test_sync_now_starts_a_run_and_returns(
+    client: ClientFactory, user: AppUser, monkeypatch
+) -> None:
+    """The cron runs every six hours; "did my fix work" deserves an answer sooner."""
+    stub_begin(monkeypatch, FakeClient())
+    monkeypatch.setattr(router, "pull_history", _noop_pull)
+    started: list[uuid.UUID] = []
+
+    async def fake_sync(user_id: uuid.UUID) -> None:
+        started.append(user_id)
+
+    monkeypatch.setattr(router, "run_sync_now", fake_sync)
+
+    async with client() as http:
+        await http.post(
+            "/garmin/connect",
+            json={"email": GARMIN_EMAIL, "password": PASSWORD},
+            headers=_auth(),
+        )
+        response = await http.post("/garmin/sync", headers=_auth())
+
+    assert response.status_code == 200
+    assert response.json()["started"] is True
+    assert started == [USER_ID]
+
+
+async def test_sync_now_refuses_without_a_connection(client: ClientFactory, user: AppUser) -> None:
+    async with client() as http:
+        assert (await http.post("/garmin/sync", headers=_auth())).status_code == 409
+
+
+async def test_sync_now_respects_the_governor_s_cooldown(
+    client: ClientFactory, user: AppUser, pg_session: AsyncSession, monkeypatch
+) -> None:
+    """Starting a run during a backoff is how a rate limit becomes a lockout, and a
+    button is not a good enough reason to override the governor."""
+    stub_begin(monkeypatch, FakeClient())
+    monkeypatch.setattr(router, "pull_history", _noop_pull)
+    started: list[uuid.UUID] = []
+
+    async def fake_sync(user_id: uuid.UUID) -> None:  # pragma: no cover - must not run
+        started.append(user_id)
+
+    monkeypatch.setattr(router, "run_sync_now", fake_sync)
+
+    async with client() as http:
+        await http.post(
+            "/garmin/connect",
+            json={"email": GARMIN_EMAIL, "password": PASSWORD},
+            headers=_auth(),
+        )
+        connection = await pg_session.scalar(
+            select(SourceConnection).where(SourceConnection.user_id == USER_ID)
+        )
+        assert connection is not None
+        connection.cooldown_until = datetime.now(UTC) + timedelta(minutes=30)
+        await pg_session.commit()
+
+        response = await http.post("/garmin/sync", headers=_auth())
+
+    assert response.status_code == 429
+    assert started == []

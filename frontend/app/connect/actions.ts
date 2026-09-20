@@ -1,7 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { postGarminConnect, postGarminDisconnect, postGarminMfa } from "@/app/lib/api";
+import {
+  postGarminConnect,
+  postGarminDisconnect,
+  postGarminMfa,
+  postGarminSync,
+} from "@/app/lib/api";
 
 /**
  * The Connect screen's server actions.
@@ -71,6 +76,14 @@ function connected(): ConnectState {
   // of that news in here would be a screen that could disagree with the server
   // about whether the login worked.
   return { step: "password" };
+}
+
+export async function syncAction(): Promise<void> {
+  await postGarminSync();
+  // The sync itself runs after the response, so there is nothing to wait for here.
+  // Revalidating shows the connection's new state; the data lands a minute later.
+  revalidatePath("/");
+  revalidatePath("/connect");
 }
 
 export async function disconnectAction(): Promise<void> {

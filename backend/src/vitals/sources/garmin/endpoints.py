@@ -63,6 +63,10 @@ class Endpoint:
     # Per-day endpoints worth running for the last N days rather than only today,
     # because Garmin revises them retroactively.
     recent_days: int = 1
+    # Extra keyword arguments the method needs on every call. `get_race_predictions`
+    # is the reason this exists: it accepts either no parameters or all three, and
+    # handing it a range without `_type` raises a plain ValueError.
+    kwargs: tuple[tuple[str, Any], ...] = ()
     note: str = ""
 
 
@@ -95,7 +99,15 @@ RANGE_ENDPOINTS: tuple[Endpoint, ...] = (
     Endpoint("max_metrics", "get_max_metrics_range", Kind.RANGE, DEFAULT_SPAN_DAYS, note="VO2max"),
     Endpoint("hill_score", "get_hill_score", Kind.RANGE, DEFAULT_SPAN_DAYS),
     Endpoint("endurance_score", "get_endurance_score", Kind.RANGE, DEFAULT_SPAN_DAYS),
-    Endpoint("race_predictions", "get_race_predictions", Kind.RANGE, DEFAULT_SPAN_DAYS),
+    Endpoint(
+        "race_predictions",
+        "get_race_predictions",
+        Kind.RANGE,
+        DEFAULT_SPAN_DAYS,
+        # All three or none: a start and end without `_type` is a ValueError, not a
+        # Garmin error, so it used to escape the connector and kill the whole run.
+        kwargs=(("_type", "daily"),),
+    ),
     Endpoint("body_composition", "get_body_composition", Kind.RANGE, DEFAULT_SPAN_DAYS),
     Endpoint(
         "weekly_intensity_minutes", "get_weekly_intensity_minutes", Kind.RANGE, DEFAULT_SPAN_DAYS

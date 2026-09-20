@@ -105,6 +105,8 @@ export type BackfillView = {
 export type GarminStatus = {
   connected: boolean;
   state: string;
+  needs_login: boolean;
+  trouble: string | null;
   detail: string | null;
   awaiting_mfa: boolean;
   last_success_at: string | null;
@@ -271,6 +273,8 @@ export const postGarminConnect = (email: string, password: string) =>
 export const postGarminMfa = (code: string) =>
   post<ConnectResult>("/garmin/connect/mfa", { code });
 export const postGarminDisconnect = () => post<GarminStatus>("/garmin/disconnect", {});
+export const postGarminSync = () =>
+  post<{ started: boolean; detail: string }>("/garmin/sync", {});
 export const fetchExplain = (day?: string) =>
   get<Explain>(`/score/explain${day ? `?day=${day}` : ""}`);
 export const fetchTrends = (days = 90) => get<Trends>(`/trends?days=${days}`);

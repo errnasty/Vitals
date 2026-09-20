@@ -201,11 +201,11 @@ async def run(
     """
     result = await advance(session, user_id=user_id, budget_s=budget_s)
     if result.chunks:
-        await _rebuild(session, user_id=user_id, since=result.cursor)
+        await rebuild(session, user_id=user_id, since=result.cursor)
     return result
 
 
-async def _rebuild(session: AsyncSession, *, user_id: uuid.UUID, since: date | None) -> None:
+async def rebuild(session: AsyncSession, *, user_id: uuid.UUID, since: date | None) -> None:
     """Silver → gold → score → brief over the window that just landed.
 
     Each layer is guarded the same way the cron guards them: a formula that blows up

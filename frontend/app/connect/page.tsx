@@ -1,7 +1,7 @@
 import { AppShell, Badge, BottomNav, Button, Card, CardHeader, Gutter, Stack, ThemeToggle, TopBar } from "@/design";
 import { ConnectForm } from "@/app/components/ConnectForm";
 import { Notice } from "@/app/components/Notice";
-import { disconnectAction } from "@/app/connect/actions";
+import { disconnectAction, syncAction } from "@/app/connect/actions";
 import { fetchGarminStatus } from "@/app/lib/api";
 import { navFor } from "@/app/lib/nav";
 import prose from "@/app/components/Prose.module.css";
@@ -35,7 +35,11 @@ export default async function Page() {
 
   const status = result.data;
 
-  if (status.connected) {
+  // Connected means "we hold usable tokens", not "the last run went well". A sync
+  // that backed off must not put the login form back in front of someone — signing
+  // in again is a fresh SSO attempt from a datacenter, which is the one thing worth
+  // avoiding here.
+  if (status.connected && !status.needs_login) {
     return (
       <AppShell header={header} nav={nav}>
         <Gutter>
@@ -45,13 +49,22 @@ export default async function Page() {
                 title="Garmin is connected"
                 icon="check"
                 action={
-                  <Badge tone={status.history && !status.history.done ? "neutral" : "accent"}>
+                  <Badge
+                    tone={
+                      status.trouble || (status.history && !status.history.done)
+                        ? "neutral"
+                        : "accent"
+                    }
+                  >
                     {status.history && !status.history.done
                       ? status.history.progress
-                      : "Active"}
+                      : status.trouble
+                        ? "Retrying"
+                        : "Active"}
                   </Badge>
                 }
               />
+              {status.trouble ? <p className={prose.note}>{status.trouble}</p> : null}
               <p className={prose.note}>
                 The sync runs every six hours and fills in from today backwards.
                 Tokens last about a year and refresh themselves, so this should not
@@ -66,6 +79,12 @@ export default async function Page() {
                 </p>
               ) : null}
             </Card>
+            <form action={syncAction}>
+              <Button type="submit" block>
+                Sync now
+              </Button>
+            </form>
+
             <form action={disconnectAction}>
               <Button type="submit" variant="quiet" block>
                 Disconnect
@@ -81,6 +100,9 @@ export default async function Page() {
     <AppShell header={header} nav={nav}>
       <Gutter>
         <Stack>
+          {status.trouble ? (
+            <Notice title="Signing in again" body={status.trouble} icon="bolt" />
+          ) : null}
           <ConnectForm awaitingMfa={status.awaiting_mfa} />
           <Card variant="flat" padding="sm">
             <CardHeader title="Worth knowing" icon="bolt" />

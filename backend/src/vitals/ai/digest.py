@@ -152,22 +152,6 @@ class Digest:
         return hashlib.sha256(self.render().encode("utf-8")).hexdigest()[:32]
 
 
-# Units a bare number cannot carry. A waterfall has a column header to explain what
-# `0.05` means; a sentence does not, and a model handed `0.05` for a heart-rate
-# variability line has every reason to write that the HRV was 0.05.
-UNIT_SUFFIX = {"sd": "SD from your own baseline", "au": "load units"}
-
-
-def _reading(value: float, unit: str) -> str:
-    """One contribution's underlying value, readable without the column it came from."""
-    if unit == "sd":
-        # A z-score is a direction as much as a magnitude, so it keeps its sign.
-        return f"{fmt.signed(value, places=2)} {UNIT_SUFFIX[unit]}"
-    suffix = UNIT_SUFFIX.get(unit)
-    text = fmt.metric(value, unit)
-    return f"{text} {suffix}" if suffix else text
-
-
 def _effect(value: float) -> str:
     """Unsigned: every line puts points *on* the board, and they sum to the score.
 
@@ -286,7 +270,7 @@ def build(
         ContributionLine(
             label=by_metric[item.metric].label if item.metric in by_metric else item.metric,
             pillar=item.pillar,
-            value=_reading(item.value, gold.unit_for(item.metric)),
+            value=fmt.reading(item.value, gold.unit_for(item.metric)),
             points=fmt.score(item.points),
             effect=_effect(item.effect),
             rationale=by_metric[item.metric].rationale if item.metric in by_metric else "",

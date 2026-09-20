@@ -70,6 +70,12 @@ class ContributionResult:
     weight: float
     coverage: float
     effect: float
+    # Points of the final score this line would add if it scored 100 from here.
+    # Computed where the weighting factor is already in hand, for the same reason
+    # `effect` is: a screen that answers "what would help most" by multiplying
+    # weights itself is a screen doing arithmetic, and a second place for that
+    # arithmetic to be wrong.
+    headroom: float
     rationale: str
 
 
@@ -94,6 +100,16 @@ class DayScore:
     @property
     def contributions(self) -> list[ContributionResult]:
         return [c for pillar in self.pillars for c in pillar.contributions]
+
+
+# The top of the points scale, named so the headroom calculation reads as "what is
+# left" rather than as a magic 100.
+MAX_POINTS = 100.0
+
+
+def _factor(scored: _Scored, covered: float, share: float) -> float:
+    """How many points of the final score one point of this line is worth."""
+    return (scored.contribution.weight * scored.coverage / covered) * share
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,7 +200,8 @@ def compose(gold: Gold, day: date, pillars: tuple[Pillar, ...] = PILLARS) -> Day
                 points=s.points,
                 weight=s.contribution.weight,
                 coverage=s.coverage,
-                effect=s.points * (s.contribution.weight * s.coverage / covered) * share,
+                effect=s.points * _factor(s, covered, share),
+                headroom=(MAX_POINTS - s.points) * _factor(s, covered, share),
                 rationale=s.contribution.rationale,
             )
             for s in scored

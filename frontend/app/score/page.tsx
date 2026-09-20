@@ -1,39 +1,42 @@
 import {
   AppShell,
   BottomNav,
-  Badge,
   Card,
   CardHeader,
   Gutter,
-  ListRow,
   ProgressRing,
+  ScoreGauge,
   SectionHeader,
   Stack,
   Stat,
-  ScoreGauge,
+  ThemeToggle,
   TopBar,
 } from "@/design";
+import { Factor } from "@/app/components/Factor";
 import { Notice } from "@/app/components/Notice";
-import { fetchExplain } from "@/app/lib/api";
-import type { ContributionView } from "@/app/lib/api";
+import { fetchScoreDetail } from "@/app/lib/api";
 import { longDate, pillarIcon } from "@/app/lib/display";
 import { navFor } from "@/app/lib/nav";
+import prose from "@/app/components/Prose.module.css";
+import styles from "./method.module.css";
 
 export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ day?: string }>;
 
 /**
- * The breakdown — why the number is the number.
+ * The score, explained — how it is built, what it is built from, and what would move it.
  *
- * Every line shows what was measured, what it scored, and how many points of the
- * final total it is responsible for. Those effects sum to the score exactly, because
- * Python worked them out that way; this page does no arithmetic to present them, it
- * only groups them under their pillar.
+ * Three questions in the order people ask them. *What is this number* comes first,
+ * because a score you cannot interrogate is a score you should not trust. *What is it
+ * made of* is four tiles, each a way into its own screen. *What would help* is last
+ * and is ranked by points recoverable rather than by what scored worst — a weak line
+ * that barely counts is not where anyone's week should go, and only Python knows
+ * which is which.
  */
 export default async function ScorePage({ searchParams }: { searchParams: SearchParams }) {
   const { day } = await searchParams;
-  const result = await fetchExplain(day);
+  const result = await fetchScoreDetail(day);
   const nav = <BottomNav items={navFor("score")} />;
 
   if (!result.ok) {
@@ -46,78 +49,76 @@ export default async function ScorePage({ searchParams }: { searchParams: Search
     );
   }
 
-  const { score, pillars, contributions, date } = result.data;
-  const byPillar = new Map<string, ContributionView[]>();
-  for (const item of contributions) {
-    byPillar.set(item.pillar, [...(byPillar.get(item.pillar) ?? []), item]);
-  }
+  const { date, value, caption, coverage, trusted, method, pillars, opportunities } =
+    result.data;
 
   return (
     <AppShell
-      header={<TopBar title="Breakdown" eyebrow={longDate(date)} centered />}
+      header={
+        <TopBar title="Breakdown" eyebrow={longDate(date)} right={<ThemeToggle />} />
+      }
       nav={nav}
     >
       <Gutter>
-        <ScoreGauge
-          value={score.value}
-          label="Vitals Score"
-          rating={score.rating}
-          caption={score.caption}
-          size={180}
-        />
+        <ScoreGauge value={value} label="Vitals Score" caption={caption} size={180} />
 
         <Stack>
-          {!score.trusted ? (
-            <Card variant="flat">
-              <Stat
-                icon="sparkle"
-                value="Limited data"
-                size="xs"
-                caption={`Only ${score.coverage} of the inputs this score wants were available. It is shown so you can watch it settle, not to be acted on yet.`}
+          {trusted ? null : (
+            <Notice
+              title="Limited data"
+              body={`Only ${coverage} of the inputs this score wants were available. It is shown so you can watch it settle, not to be acted on yet.`}
+              icon="sparkle"
+            />
+          )}
+
+          <SectionHeader title="What it is made of" />
+          {pillars.map((pillar) => (
+            <Card key={pillar.name} href={`/score/${pillar.name}`}>
+              <CardHeader
+                title={pillar.label}
+                subtitle={`${pillar.weight} of the score · ${pillar.coverage} of its inputs available`}
+                icon={pillarIcon(pillar.name)}
+                // The ring carries the number. A badge beside it would be the same
+                // figure twice, which reads as two different measurements.
+                action={
+                  <ProgressRing
+                    value={pillar.value}
+                    size={48}
+                    label={`${pillar.label} ${pillar.display} of 100`}
+                  />
+                }
               />
+              <p className={prose.note}>{pillar.summary}</p>
             </Card>
+          ))}
+
+          {opportunities.length ? (
+            <>
+              <SectionHeader title="Where the points are" />
+              <Card variant="flat" padding="sm">
+                <Stat
+                  value="Ranked by what would move the score"
+                  size="xs"
+                  caption="Not by what scored worst — a weak line that barely counts is not worth your week."
+                />
+              </Card>
+              {opportunities.map((factor) => (
+                <Factor key={factor.metric} factor={factor} />
+              ))}
+            </>
           ) : null}
 
-          <SectionHeader title="Where the points came from" />
-
-          {pillars.map((pillar) => {
-            const lines = byPillar.get(pillar.name) ?? [];
-            return (
-              <Card key={pillar.name}>
-                <CardHeader
-                  title={pillar.label}
-                  subtitle={`${pillar.coverage} of its inputs available`}
-                  icon={pillarIcon(pillar.name)}
-                  action={
-                    <ProgressRing
-                      value={pillar.value}
-                      size={48}
-                      label={`${pillar.label} ${pillar.display} of 100`}
-                    />
-                  }
-                />
-                {lines.map((line) => (
-                  <ListRow
-                    key={line.metric}
-                    label={line.label}
-                    meta={`${line.value} · scored ${line.points}`}
-                    value={
-                      <Badge tone={line.points_value >= 50 ? "accent" : "neutral"}>
-                        {line.effect} pts
-                      </Badge>
-                    }
-                  />
-                ))}
-              </Card>
-            );
-          })}
-
-          <Card variant="flat" padding="sm">
-            <Stat
-              value="Every line above is worth the points it says"
-              size="xs"
-              caption="The effects add up to the score exactly — they are the decomposition, not an estimate of one."
-            />
+          <SectionHeader title="How it is calculated" />
+          <Card>
+            <CardHeader title={method.headline} icon="target" />
+            <ol className={styles.steps}>
+              {method.steps.map((step) => (
+                <li key={step} className={styles.step}>
+                  {step}
+                </li>
+              ))}
+            </ol>
+            <p className={prose.note}>{method.coverage_floor}</p>
           </Card>
         </Stack>
       </Gutter>

@@ -119,3 +119,50 @@ that change is a substitution.
 
 **Score trend.** A single day's score is noisier than the 7-day average nobody has
 computed yet. The table is there; the metric is not.
+
+## The detail screens — phase 7b
+
+`/score` and `/score/{pillar}` answer three questions, in the order people ask them:
+what is this number, what is it made of, and what would move it.
+
+None of it is a calculation. The score was already stored decomposed, so "what carried
+this pillar" is `order by points` and "what would help most" is `order by headroom`.
+
+### Headroom
+
+`score_contribution.headroom` is the points of the **final score** a line would add if
+it scored 100 from where it is — computed in `compose.py`, where the weighting factor
+is already in hand, for exactly the reason `effect` is:
+
+> a screen that answers "what would help most" by multiplying weights itself is a
+> screen doing arithmetic, and a second place for that sum to be wrong.
+
+It is also why the advice ranks by headroom rather than by what scored worst. A
+monotony of 2.4 scoring 7 out of 100 looks alarming and is worth 0.2 points; sending
+someone to fix that instead of their sleep debt would be actively unhelpful. Anything
+under half a point is left off the screen entirely.
+
+### Targets come from the calibration, not from prose
+
+`ramp_at`, `band_at` and `against_yourself` carry their anchors as a `Target` rather
+than hiding them in a lambda. The app grades your sleep against 8 hours, so 8 hours is
+what it shows you — and it cannot drift, because the screen reads the same object the
+scorer used.
+
+Three curves, three honest kinds of answer:
+
+| Curve | What the screen says |
+|---|---|
+| `ramp_at` | one direction is better, so there is a number to aim for, and the scale it sits on |
+| `band_at` | a range earns full marks; someone already inside it is told **nothing** |
+| `against_yourself` | no fixed target exists, and it says so — a VO₂max means nothing without an age |
+
+### Not every input is a dial
+
+`Contribution.lever` is the note about what actually moves a line, and
+`Contribution.observed` marks the ones that are readings rather than choices.
+
+"Get your overnight HRV to +0.5 SD" is not advice. It is a number you do not control,
+and an app that presents it as a target is teaching you to chase a reading instead of
+the sleep and training that produce it. Observed lines get no target and no gap
+sentence — only the note about what they answer to.

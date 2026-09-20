@@ -122,7 +122,7 @@ export default async function Page() {
           <SectionHeader title="Pillars" action="Breakdown" actionHref="/score" />
           <Grid2>
             {pillars.map((pillar) => (
-              <Card key={pillar.name} padding="sm" href="/score">
+              <Card key={pillar.name} padding="sm" href={`/score/${pillar.name}`}>
                 <Stat
                   icon={pillarIcon(pillar.name)}
                   label={pillar.label}

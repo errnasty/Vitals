@@ -19,10 +19,44 @@ float out, so the calibration is arguable on its own terms.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 
 MIN = 0.0
 MAX = 100.0
+
+# Which way is better. `within` is a band — both ends are worse than the middle.
+HIGHER = "higher"
+LOWER = "lower"
+WITHIN = "within"
+PERSONAL = "personal"
+
+
+# A curve with its calibration still attached: value and personal history in, points
+# out, or None when it cannot be scored honestly yet.
+Scorer = Callable[[float, Sequence[float]], float | None]
+
+
+@dataclass(frozen=True, slots=True)
+class Target:
+    """What full marks on this curve actually look like.
+
+    The point of naming this is that "what should I aim for" is a question the
+    calibration already answers — `hundred_at` *is* the target — and leaving it inside
+    a lambda meant the app could score you against a number it could not show you.
+
+    `optimal` is the value that scores 100. For a band it is the near edge, because
+    telling someone in the middle of the range to move is nonsense. `floor` is where
+    the curve bottoms out, kept so a screen can say what the scale is rather than
+    presenting a number out of nowhere.
+    """
+
+    direction: str
+    optimal: float | None = None
+    floor: float | None = None
+    band: tuple[float, float] | None = None
+    # For a personal percentile: how much of your own history you are ranked against.
+    history_days: int = 0
 
 
 def ramp(value: float, *, zero_at: float, hundred_at: float) -> float:
@@ -53,6 +87,66 @@ def band(value: float, *, low: float, high: float, margin: float) -> float:
         return MAX
     distance = low - value if value < low else value - high
     return max(MIN, MAX * (1.0 - distance / margin))
+
+
+# ── scorers ─────────────────────────────────────────────────────────────────────
+#
+# A `Scorer` is a curve with its calibration still attached. The functions above are
+# the arithmetic; these bind the anchors to them and keep them readable afterwards,
+# so `score/explain` can say "8h scores full marks, you are at 7h 16m" without any
+# layer above re-deriving what the curve was.
+
+
+def ramp_at(*, zero_at: float, hundred_at: float) -> Scorer:
+    """A ramp scorer carrying the two points it was calibrated against."""
+
+    def scorer(value: float, history: Sequence[float]) -> float | None:
+        return ramp(value, zero_at=zero_at, hundred_at=hundred_at)
+
+    scorer.target = Target(  # type: ignore[attr-defined]
+        direction=HIGHER if hundred_at > zero_at else LOWER,
+        optimal=hundred_at,
+        floor=zero_at,
+    )
+    return scorer
+
+
+def band_at(*, low: float, high: float, margin: float) -> Scorer:
+    """A band scorer carrying the range that earns full marks."""
+
+    def scorer(value: float, history: Sequence[float]) -> float | None:
+        return band(value, low=low, high=high, margin=margin)
+
+    scorer.target = Target(  # type: ignore[attr-defined]
+        direction=WITHIN,
+        band=(low, high),
+        # No single optimal: anywhere inside the band is full marks, and nudging
+        # someone who is already inside it would be advice invented by the UI.
+        optimal=None,
+    )
+    return scorer
+
+
+def against_yourself(days: int) -> Scorer:
+    """A percentile scorer, ranked against this person's own recent history.
+
+    No fixed target, and that is the honest answer rather than a gap: there is no
+    number a VO2max "should" be without an age, so the only thing to beat is your own
+    recent best — which the score layer fills in when it has the history in hand.
+    """
+
+    def scorer(value: float, history: Sequence[float]) -> float | None:
+        return percentile(value, history)
+
+    scorer.target = Target(direction=PERSONAL, history_days=days)  # type: ignore[attr-defined]
+    scorer.history_days = days  # type: ignore[attr-defined]
+    return scorer
+
+
+def target_of(scorer: object) -> Target | None:
+    """The calibration behind a scorer, when it kept one."""
+    found = getattr(scorer, "target", None)
+    return found if isinstance(found, Target) else None
 
 
 def percentile(value: float, history: Sequence[float]) -> float | None:

@@ -77,6 +77,24 @@ def direction(delta: float | None, *, tolerance: float = 0.0) -> str:
     return "up" if delta > 0 else "down"
 
 
+# Units a bare number cannot carry on its own. A waterfall has a column header to
+# explain what `0.05` means; a sentence does not, and a model or a reader handed
+# `0.05` for a heart-rate-variability line has every reason to think the HRV was 0.05.
+UNIT_SUFFIX = {"sd": "SD from your own baseline", "au": "load units"}
+
+
+def reading(value: float | None, unit: str) -> str:
+    """A value for prose: like `metric`, but never leaves the unit to be guessed."""
+    if value is None:
+        return "—"
+    if unit == "sd":
+        # A z-score is a direction as much as a magnitude, so it keeps its sign.
+        return f"{signed(value, places=2)} {UNIT_SUFFIX[unit]}"
+    suffix = UNIT_SUFFIX.get(unit)
+    text = metric(value, unit)
+    return f"{text} {suffix}" if suffix else text
+
+
 # How each canonical unit reads on screen. The vocabulary is small on purpose: a unit
 # nobody has taught this table falls through to a plain number rather than guessing.
 def metric(value: float | None, unit: str) -> str:

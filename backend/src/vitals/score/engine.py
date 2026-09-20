@@ -236,6 +236,7 @@ async def _write(session: AsyncSession, *, user_id: uuid.UUID, days: Sequence[Da
             "weight": contribution.weight,
             "coverage": contribution.coverage,
             "effect": contribution.effect,
+            "headroom": contribution.headroom,
         }
         for day in days
         for contribution in day.contributions

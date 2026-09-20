@@ -118,6 +118,59 @@ export type ConnectResult = {
   display_name: string | null;
 };
 
+export type FactorView = {
+  metric: string;
+  label: string;
+  rationale: string;
+  value: string;
+  points: string;
+  points_value: number;
+  coverage: string;
+  effect: string;
+  headroom: string;
+  headroom_value: number;
+  basis: string;
+  target: string | null;
+  scale: string | null;
+  advice: string | null;
+};
+
+export type PillarDetail = {
+  name: string;
+  label: string;
+  display: string;
+  value: number;
+  coverage: string;
+  trusted: boolean;
+  weight: string;
+  summary: string;
+  factors: FactorView[];
+};
+
+export type PillarResponse = { date: string; pillar: PillarDetail };
+
+export type PillarLink = {
+  name: string;
+  label: string;
+  display: string;
+  value: number;
+  coverage: string;
+  weight: string;
+  summary: string;
+};
+
+export type ScoreDetail = {
+  date: string;
+  value: number;
+  display: string;
+  caption: string;
+  coverage: string;
+  trusted: boolean;
+  method: { headline: string; steps: string[]; coverage_floor: string };
+  pillars: PillarLink[];
+  opportunities: FactorView[];
+};
+
 /** Either the payload, or a sentence a person can act on. */
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -208,6 +261,10 @@ async function post<T>(path: string, body: unknown): Promise<Result<T>> {
 }
 
 export const fetchToday = () => get<Today>("/today");
+export const fetchScoreDetail = (day?: string) =>
+  get<ScoreDetail>(`/score/detail${day ? `?day=${day}` : ""}`);
+export const fetchPillar = (name: string, day?: string) =>
+  get<PillarResponse>(`/score/pillar/${name}${day ? `?day=${day}` : ""}`);
 export const fetchGarminStatus = () => get<GarminStatus>("/garmin/status");
 export const postGarminConnect = (email: string, password: string) =>
   post<ConnectResult>("/garmin/connect", { email, password });

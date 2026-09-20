@@ -1,0 +1,57 @@
+/*
+ * The small grid under a factor's heading. Four labelled figures, which the design
+ * system has no primitive for — `Stat` is built for one number owning its space, and
+ * these are four that only mean something beside each other.
+ */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--v-s-3) var(--v-s-4);
+  margin: var(--v-s-4) 0;
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.key {
+  font-size: var(--v-t-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--v-text-faint);
+}
+
+.val {
+  margin: 0;
+  font-family: var(--v-font-display);
+  font-size: var(--v-t-h3);
+  color: var(--v-text);
+  /* A long formatted value ("+0.05 SD from your own baseline") must wrap rather
+     than push the column out of the card. */
+  overflow-wrap: anywhere;
+}
+
+.gain {
+  color: var(--v-accent);
+}
+
+/*
+ * The advice sits apart from the explanation above it: one is what the number means,
+ * the other is what to do about it, and running them together makes both easier to
+ * skip.
+ */
+.advice {
+  margin: 0;
+  padding: var(--v-s-3) var(--v-s-4);
+  border-radius: var(--v-r-sm);
+  background: var(--v-surface-2);
+  border-left: 2px solid var(--v-accent);
+  font-size: var(--v-t-body);
+  line-height: 1.5;
+  color: var(--v-text);
+  text-wrap: pretty;
+}

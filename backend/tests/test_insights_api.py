@@ -192,3 +192,31 @@ async def test_a_same_day_finding_does_not_claim_a_next_day_effect(
     (finding,) = body["findings"]
     assert finding["when"] == "the same day"
     assert finding["sentence"] == ("On days with alcohol, your Garmin sleep score is 10% lower.")
+
+
+async def test_a_tag_reads_as_prose_rather_than_as_its_column_heading(
+    client: ClientFactory, user: AppUser, pg_session: AsyncSession
+) -> None:
+    """ "Stressful day" is a fine label and a broken sentence.
+
+    Lowercasing the label is the obvious shortcut and it produces "on days with
+    stressful day". Every tag carries its own mid-sentence wording for exactly this,
+    and this screen is nothing but sentences.
+    """
+    await _tag_days(pg_session, 11)
+    await _finding(
+        pg_session,
+        tag="stress",
+        lag=0,
+        metric=silver.RESTING_HR,
+        delta=4.0,
+        mean_without=54.0,
+        n_with=18,
+        n_without=44,
+    )
+
+    async with client() as http:
+        body = (await http.get("/insights", headers=_auth())).json()
+
+    (finding,) = body["findings"]
+    assert finding["sentence"] == ("On days with stress, your resting heart rate is 7% higher.")

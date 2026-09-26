@@ -40,11 +40,22 @@ class Tag:
     magnitude: str | None = None
     # Which icon the UI reaches for. A name from the design system's set.
     icon: str = "sparkle"
+    # How the tag reads mid-sentence, after "On days with" or "On days after".
+    #
+    # Not the label lowercased. "Stressful day" is a fine column heading and a
+    # broken sentence — "on days with stressful day" — and the findings screen is
+    # nothing but sentences. Each tag owns its own words rather than leaving prose
+    # to be assembled by whichever screen happens to need it.
+    phrase: str = ""
+
+    def reads_as(self) -> str:
+        return self.phrase or self.label.lower()
 
 
 TAGS: tuple[Tag, ...] = (
     Tag(
         name="alcohol",
+        phrase="alcohol",
         label="Alcohol",
         hint="Roughly how many drinks — one and six are different facts.",
         magnitude="drinks",
@@ -52,48 +63,56 @@ TAGS: tuple[Tag, ...] = (
     ),
     Tag(
         name="late_meal",
+        phrase="a late meal",
         label="Late meal",
         hint="Ate within about three hours of going to bed.",
         icon="flame",
     ),
     Tag(
         name="late_caffeine",
+        phrase="late caffeine",
         label="Late caffeine",
         hint="Coffee, tea or an energy drink after mid-afternoon.",
         icon="bolt",
     ),
     Tag(
         name="stress",
+        phrase="stress",
         label="Stressful day",
         hint="Work, family, money — whatever made it one.",
         icon="pulse",
     ),
     Tag(
         name="poor_environment",
+        phrase="a bad sleep setup",
         label="Bad sleep setup",
         hint="Too hot, too bright, too loud, or not your own bed.",
         icon="moon",
     ),
     Tag(
         name="travel",
+        phrase="travel",
         label="Travel",
         hint="A flight, a long drive, or a change of time zone.",
         icon="map",
     ),
     Tag(
         name="illness",
+        phrase="illness",
         label="Unwell",
         hint="Anything from a cold to a fever.",
         icon="lungs",
     ),
     Tag(
         name="injury",
+        phrase="an injury or pain",
         label="Injury or pain",
         hint="Something that changed how you moved or slept.",
         icon="heart",
     ),
     Tag(
         name="menstruation",
+        phrase="your period",
         label="Period",
         hint="One of the strongest cyclical effects on the numbers above.",
         icon="calendar",

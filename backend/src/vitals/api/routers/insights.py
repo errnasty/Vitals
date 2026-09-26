@@ -111,7 +111,7 @@ def _confidence(row: Insight) -> str:
 
 def _sentence(row: Insight) -> str:
     phrase = PHRASE.get(row.metric, row.metric)
-    label = tags.BY_NAME[row.tag].label.lower() if row.tag in tags.BY_NAME else row.tag
+    label = tags.BY_NAME[row.tag].reads_as() if row.tag in tags.BY_NAME else row.tag
     when = "the next day" if row.lag else "on the same day"
     return (
         f"On days after {label}, {phrase} is {_change(row)} {row.direction} {when}."

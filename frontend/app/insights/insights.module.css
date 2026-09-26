@@ -1,0 +1,61 @@
+/*
+ * Findings.
+ *
+ * The sentence is the thing, so it gets the size and the weight; the evidence sits
+ * under it in the open rather than behind a disclosure. Hiding the sample size is
+ * how a screen like this stops being checkable, and a claim about someone's health
+ * that cannot be checked is not one worth making.
+ */
+
+.finding {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v-s-2);
+  padding-block: var(--v-s-3);
+  border-bottom: 1px solid var(--v-line);
+}
+
+.finding:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.finding:first-child {
+  padding-top: 0;
+}
+
+.sentence {
+  margin: 0;
+  font-size: var(--v-t-body);
+  line-height: 1.45;
+  color: var(--v-text);
+  text-wrap: pretty;
+}
+
+/* The evidence line. Deliberately quiet, deliberately present.
+ *
+ * The badge and the prose are separate elements so the badge can sit on the
+ * baseline of the first line and the prose can wrap under it. The separator between
+ * the two halves of the prose is a real character inside the span rather than a
+ * `::before` on a flex child: as a flex child it became the first thing on the
+ * wrapped line, which reads as a bullet nobody asked for. */
+.evidence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--v-s-2);
+  font-size: var(--v-t-sm);
+  color: var(--v-text-faint);
+}
+
+.evidenceText {
+  text-wrap: pretty;
+}
+
+.denominator {
+  margin: 0;
+  font-size: var(--v-t-sm);
+  color: var(--v-text-faint);
+  line-height: 1.5;
+  text-wrap: pretty;
+}

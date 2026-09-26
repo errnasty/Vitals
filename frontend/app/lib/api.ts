@@ -202,6 +202,29 @@ export type DayContext = {
   vocabulary: TagOption[];
 };
 
+export type FindingView = {
+  tag: string;
+  tag_label: string;
+  metric: string;
+  /** The whole finding, numbers included, written in Python. Never assembled here. */
+  sentence: string;
+  when: string;
+  change: string;
+  direction: string;
+  sample: string;
+  confidence: string;
+};
+
+export type Insights = {
+  findings: FindingView[];
+  /** How many tests the run performed. Without it a finding cannot be read honestly. */
+  tested: number;
+  tagged_days: number;
+  window_start: string | null;
+  window_end: string | null;
+  empty_reason: string | null;
+};
+
 /** Either the payload, or a sentence a person can act on. */
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -317,3 +340,4 @@ export const putContextNote = (note: string | null, day?: string) =>
 export const fetchExplain = (day?: string) =>
   get<Explain>(`/score/explain${day ? `?day=${day}` : ""}`);
 export const fetchTrends = (days = 90) => get<Trends>(`/trends?days=${days}`);
+export const fetchInsights = () => get<Insights>("/insights");

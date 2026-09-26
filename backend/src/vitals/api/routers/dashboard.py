@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vitals.ai import brief as ai_brief
 from vitals.analytics import canonical as gold
 from vitals.api import format as fmt
+from vitals.api import health_check
 from vitals.api.deps import CurrentUserDep, SessionDep
 from vitals.db.models import (
     SOURCE_MODEL,
@@ -105,6 +106,10 @@ class TodayResponse(BaseModel):
     headlines: list[HeadlineView]
     trend: list[float]
     brief: BriefView | None = None
+    # Said out loud when the numbers below have stopped being refreshed. A dashboard
+    # that shows last week's data as if it were today's is worse than one showing an
+    # error, because an error gets investigated.
+    sync_warning: str | None = None
     # Whether a source is attached at all. Carried here rather than fetched
     # separately because the screen's contract is one round trip, and because a
     # disconnected connector has to be reachable from the home screen in *every*
@@ -339,6 +344,7 @@ async def today(user: CurrentUserDep, session: SessionDep) -> TodayResponse:
             headlines=[],
             trend=[],
             source_connected=await _source_connected(session, user.id),
+            sync_warning=(await health_check.check(session, user_id=user.id)).message,
             empty_reason=(
                 "No score yet — run `vitals score` to build it."
                 if has_silver
@@ -356,6 +362,7 @@ async def today(user: CurrentUserDep, session: SessionDep) -> TodayResponse:
         trend=[point.value for point in trend],
         brief=_brief_view(await ai_brief.latest(session, user_id=user.id, day=day)),
         source_connected=await _source_connected(session, user.id),
+        sync_warning=(await health_check.check(session, user_id=user.id)).message,
     )
 
 

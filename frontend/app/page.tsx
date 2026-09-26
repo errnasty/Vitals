@@ -53,7 +53,7 @@ export default async function Page() {
     );
   }
 
-  const { score, pillars, headlines, trend, brief, source_connected, empty_reason } =
+  const { score, pillars, headlines, trend, brief, sync_warning, source_connected, empty_reason } =
     result.data;
 
   if (!score) {
@@ -88,6 +88,10 @@ export default async function Page() {
         />
 
         <Stack>
+          {sync_warning ? (
+            <Notice title="Data has stopped arriving" body={sync_warning} icon="clock" />
+          ) : null}
+
           {source_connected ? null : (
             <Notice
               title="Garmin isn't connected"

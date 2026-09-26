@@ -53,6 +53,7 @@ export type Today = {
   headlines: HeadlineView[];
   trend: number[];
   brief: BriefView | null;
+  sync_warning: string | null;
   source_connected: boolean;
   empty_reason: string | null;
 };

@@ -521,6 +521,59 @@ def normalize(
 
 
 @app.command()
+def recordings(
+    rebuild_all: bool = typer.Option(
+        False, "--rebuild", help="Re-decode every stored file, not only the new ones"
+    ),
+    email: str | None = typer.Option(None, "--email", help="Account to rebuild, if several exist"),
+) -> None:
+    """Decode stored FIT files into activity detail.
+
+    The sync does this automatically for files it has just downloaded. Run it by hand
+    with `--rebuild` after changing anything in `normalize/fit.py`: the recordings are
+    kept verbatim precisely so a better reduction is a recompute rather than a
+    thousand re-downloads.
+    """
+    configure_logging()
+
+    async def _run() -> int:
+        from vitals.ingest.pipeline import NoSuchUser, resolve_user
+        from vitals.normalize.recordings import rebuild
+
+        async with get_sessionmaker()() as session:
+            try:
+                user = await resolve_user(session, email=email)
+            except NoSuchUser as exc:
+                typer.secho(str(exc), fg=typer.colors.RED, err=True)
+                return 1
+
+            result = await rebuild(session, user_id=user.id, force=rebuild_all)
+
+        typer.echo(f"{result.files} recording(s) stored")
+        typer.echo(f"  decoded {result.parsed}  unchanged {result.skipped}")
+        if result.orphaned:
+            # Not an error: the summary simply has not been normalized yet.
+            typer.secho(
+                f"  {result.orphaned} waiting for their activity to be normalized",
+                fg=typer.colors.YELLOW,
+            )
+        if result.unreadable:
+            typer.secho(
+                f"  {result.unreadable} could not be decoded (kept, not discarded)",
+                fg=typer.colors.RED,
+            )
+        return 0
+
+    async def _wrapped() -> int:
+        try:
+            return await _run()
+        finally:
+            await dispose_engine()
+
+    raise typer.Exit(asyncio.run(_wrapped()))
+
+
+@app.command()
 def recompute(
     since: str | None = typer.Option(None, "--since", help="First day to recompute, YYYY-MM-DD"),
     until: str | None = typer.Option(None, "--until", help="Last day (default: latest silver)"),

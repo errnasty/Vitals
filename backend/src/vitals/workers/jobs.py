@@ -22,6 +22,7 @@ from vitals.ingest.pipeline import NoSuchUser, resolve_user, run_backfill, run_i
 from vitals.insights.engine import refresh as refresh_insights
 from vitals.logging import get_logger
 from vitals.normalize import normalize as normalize_silver
+from vitals.normalize.recordings import rebuild as rebuild_recordings
 from vitals.score import score as score_day
 from vitals.sources.base import SyncOutcome
 
@@ -118,6 +119,21 @@ async def _refresh_derived(
         rows=silver.rows,
         since=start.isoformat(),
     )
+
+    try:
+        # Before gold, because the training-load model reads normalized power and
+        # moving time from here when a recording exists.
+        recorded = await rebuild_recordings(session, user_id=user.id)
+    except Exception as exc:  # noqa: BLE001 - an enrichment never fails a sync
+        log.error("sync.recordings_failed", error=f"{type(exc).__name__}: {exc}")
+    else:
+        if recorded.parsed or recorded.unreadable:
+            log.info(
+                "sync.recordings_rebuilt",
+                parsed=recorded.parsed,
+                unreadable=recorded.unreadable,
+                orphaned=recorded.orphaned,
+            )
 
     try:
         gold = await recompute_gold(session, user_id=user.id, start=start)

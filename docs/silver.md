@@ -129,3 +129,62 @@ rather than blocking the analytics work.
 bronze and deliberately not normalized: they are week-grain values that would be
 misleading filed under a single day, and phase 4 can compute them from the daily series
 it already has.
+
+## Phase 3b: the FIT file
+
+Everything above comes from Garmin's *summary* of an activity. The FIT file is the
+recording itself — a heart rate, a position and a power reading for every second the
+watch was running — and it answers questions the summary has already thrown away.
+
+### Where the bytes live, and why not a bucket
+
+In Postgres, as `raw_file`: gzipped, hash-deduped, one row per activity. The original
+plan said a Railway bucket, and the numbers argued against it. A compressed FIT file
+is around a hundred kilobytes; a decade of daily training is under half a gigabyte.
+Keeping it in Postgres puts it inside the managed backups and the point-in-time
+recovery that are already paid for, with no second service to provision, authenticate
+against, or lose. The trade reverses when the artefacts are photographs rather than
+recordings — phase 11 is where a bucket earns its place.
+
+### No per-second row reaches Postgres
+
+An hour's run is 3,600 samples across eight channels. A few years of training would be
+tens of millions of rows earning their keep about twice a year. So `normalize/fit.py`
+decodes the streams in memory, reduces them to the handful of facts that cannot be
+recovered from a mean, and drops them:
+
+| Fact | Why it needs the recording |
+|---|---|
+| Normalized power | The fourth-power rolling average; a ride of surges costs more than its mean |
+| Variability index | NP over average power: how ragged the effort was |
+| Aerobic decoupling | Speed per heartbeat, first half against second. Invisible in any average |
+| Heart-rate drift | The raw bpm behind the decoupling |
+| Ascent and descent | From the altimeter, with a threshold under the GPS noise floor |
+| Moving time | From the speed channel rather than the watch's opinion |
+| Route | Projected to an SVG path in the design system's 380x300 box |
+
+The file is kept verbatim, so a better reduction next year is `vitals recordings
+--rebuild` rather than two thousand re-downloads. That is the whole reason the bytes
+are worth storing.
+
+### What is deliberately *not* computed here
+
+Anything that needs to know *your* maximum heart rate — time in zones, most obviously.
+A zone boundary guessed from 220-minus-age is a number that looks precise and is not,
+so zones belong with the response profile in phase 8, not in a decoder.
+
+### The download is capped per run
+
+A summary endpoint returns a year in one call; a FIT file is one call per activity,
+forever. Five years of daily training is a couple of thousand of them, which at the
+governor's twenty requests a minute is nearly two hours of a container staying awake —
+on a plan where staying awake is the bill. So `FIT_PER_RUN` takes a slice and the next
+run takes the next one. The history arrives over a fortnight of ordinary syncs, and
+nothing is lost by waiting: the files do not expire, and the dashboard never needed
+them to render.
+
+The download pass is deliberately separate from the JSON-detail pass above it. That
+one skips an activity whose summary is already in bronze, which is right for JSON and
+wrong here — every activity recorded before this feature existed has the summary and
+no recording, so sharing the skip would have meant the back catalogue was never
+downloaded, and nothing would have reported it.

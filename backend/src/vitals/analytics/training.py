@@ -71,6 +71,26 @@ def load_history(inputs: Inputs, day: date, days: int) -> list[float | None]:
 def compute(inputs: Inputs, day: date) -> list[Derived]:
     out: list[Derived] = []
 
+    # From the recording, where there is one. Absent rather than zero on a day with
+    # no FIT file — "the altimeter said nothing" and "you climbed nothing" are
+    # different facts, and a zero here would flatten a mountain week into the
+    # baseline of anyone whose history predates the downloads.
+    recorded = inputs.recordings.get(day)
+    if recorded is not None:
+        if recorded.decoupling_pct is not None:
+            out.append(
+                Derived(
+                    metric=d.DECOUPLING,
+                    calendar_date=day,
+                    value=recorded.decoupling_pct,
+                    inputs=1,
+                )
+            )
+        if recorded.ascent_m is not None:
+            out.append(
+                Derived(metric=d.ASCENT, calendar_date=day, value=recorded.ascent_m, inputs=1)
+            )
+
     today_load = inputs.activity_load.get(day)
     tracked_today = was_tracked(inputs, day)
     if today_load is not None or tracked_today:

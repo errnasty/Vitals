@@ -18,6 +18,7 @@ dependencies = [
     "cryptography>=44.0",
     "pyjwt[crypto]>=2.10",
     "garminconnect>=0.3.11",
+    "fitdecode>=0.11.0",
 ]
 
 [project.scripts]
@@ -66,5 +67,5 @@ strict = true
 # python-garminconnect ships no py.typed marker. Our own wrapper
 # (sources/garmin/client.py) is the typed boundary around it.
 [[tool.mypy.overrides]]
-module = ["garminconnect.*"]
+module = ["garminconnect.*", "fitdecode.*"]
 ignore_missing_imports = true

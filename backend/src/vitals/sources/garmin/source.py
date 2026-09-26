@@ -24,11 +24,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vitals.db.models import GARMIN_TOKENS, RawPayload, SourceConnection, SyncRun
+from vitals.ingest import files
 from vitals.ingest.raw_store import RawRecord, RawStore, StoreResult
 from vitals.logging import get_logger
 from vitals.security.vault import CredentialVault
 from vitals.sources.base import DEGRADED, FAILED, PARTIAL, SUCCESS, SyncOutcome
-from vitals.sources.garmin.client import GarminClient, GarminError, NeedsReauth, RateLimited
+from vitals.sources.garmin.client import (
+    ActivityDownloadFormat,
+    GarminClient,
+    GarminError,
+    NeedsReauth,
+    RateLimited,
+)
 from vitals.sources.garmin.endpoints import split_dated
 from vitals.sources.garmin.governor import (
     BudgetExhausted,
@@ -43,14 +50,24 @@ log = get_logger(__name__)
 
 SOURCE = "garmin"
 
-# Detail fetched once per activity. The FIT file (`download_activity`) is still to
-# come: it needs somewhere to put the blobs and a parser, and is independent of the
-# silver schema — see docs/silver.md.
+# Detail fetched once per activity, all of it immutable after the fact.
 ACTIVITY_DETAIL: tuple[tuple[str, str], ...] = (
     ("activity", "get_activity"),
     ("activity_details", "get_activity_details"),
     ("activity_splits", "get_activity_splits"),
 )
+
+# The original recording, one request per activity, and the reason there is a cap.
+#
+# A summary endpoint returns a year in one call; a FIT file is one call per activity
+# forever. Someone with five years of daily training has a couple of thousand of them,
+# which at the governor's twenty requests a minute is nearly two hours of a container
+# staying awake — on a plan where staying awake is the bill. So a run takes a slice and
+# the next run takes the next one. The history arrives over a fortnight of ordinary
+# syncs instead of one very expensive afternoon, and nothing is lost by waiting: these
+# files do not expire, and the dashboard never needed them to render.
+FIT_KIND = "fit"
+FIT_PER_RUN = 25
 
 ClientFactory = Callable[[str, RateGovernor], Awaitable[GarminClient]]
 
@@ -285,6 +302,73 @@ class GarminSource:
                     [RawRecord(endpoint, payload, calendar_date=day, entity_key=activity_id)],
                     sync_run_id=run_id,
                 )
+
+        await self._download_recordings(client, summaries, progress=progress)
+
+    async def _download_recordings(
+        self,
+        client: GarminClient,
+        summaries: list[tuple[str, date | None]],
+        *,
+        progress: _Progress,
+    ) -> None:
+        """Pull the FIT file for activities that do not have one yet.
+
+        Deliberately a separate pass from the JSON detail above, rather than another
+        endpoint in that loop. The JSON loop skips an activity whose summary is already
+        in bronze — which is right for JSON and wrong here, because every activity
+        recorded before this feature existed has the summary and no recording. Sharing
+        that skip would have meant the entire back catalogue was never downloaded, and
+        nothing would ever have reported it: the dashboard would look identical.
+
+        A failure here is logged and dropped. The recording is an enrichment; an
+        activity without one is complete in every way the score and the dashboard care
+        about, and letting a corrupt file stop a sync would trade something valuable
+        for something optional.
+        """
+        have = await files.known_keys(
+            self._session, user_id=self._user_id, source=SOURCE, kind=FIT_KIND
+        )
+        wanted = [(key, day) for key, day in summaries if key not in have][:FIT_PER_RUN]
+        if not wanted:
+            return
+
+        stored = 0
+        for activity_id, day in wanted:
+            try:
+                blob = await client.call(
+                    "download_activity",
+                    activity_id,
+                    dl_fmt=ActivityDownloadFormat.ORIGINAL,
+                )
+            except (NeedsReauth, RateLimited):
+                raise
+            except Exception as exc:  # noqa: BLE001 - an enrichment never fails a sync
+                log.warning("garmin.fit_failed", activity_id=activity_id, error=str(exc))
+                progress.failures.append(f"fit {activity_id}: {exc}")
+                continue
+
+            if not isinstance(blob, bytes | bytearray) or not blob:
+                continue
+
+            result = await files.put(
+                self._session,
+                user_id=self._user_id,
+                source=SOURCE,
+                kind=FIT_KIND,
+                entity_key=activity_id,
+                content=bytes(blob),
+                calendar_date=day,
+            )
+            if result.fresh:
+                stored += 1
+
+        log.info(
+            "garmin.recordings_stored",
+            stored=stored,
+            attempted=len(wanted),
+            remaining=max(0, len(summaries) - len(have) - len(wanted)),
+        )
 
     async def _activity_summaries(self, run_id: uuid.UUID) -> list[tuple[str, date | None]]:
         """Activity ids from the summaries this run just stored."""

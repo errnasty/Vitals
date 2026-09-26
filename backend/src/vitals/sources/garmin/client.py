@@ -34,6 +34,15 @@ from garminconnect import (
 from vitals.logging import get_logger
 from vitals.sources.garmin.governor import RateGovernor
 
+# Re-exported so the rest of the app never imports the library directly: this module
+# is the boundary, and a download format is part of its vocabulary.
+#
+# ORIGINAL is the watch's own FIT recording. Every other format Garmin offers —
+# TCX, GPX, CSV — is a lossy re-encoding it generates on request, and taking one of
+# those would mean keeping a derived file forever while the original stayed on
+# Garmin's servers, which is the opposite of what bronze is for.
+ActivityDownloadFormat = Garmin.ActivityDownloadFormat
+
 log = get_logger(__name__)
 
 # What `login()` returns in place of a client when a code is needed.

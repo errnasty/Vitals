@@ -37,6 +37,9 @@ TSB = "tsb"
 ACWR = "acwr"
 MONOTONY = "monotony"
 STRAIN = "strain"
+# From the recording rather than the summary — see normalize/fit.py.
+DECOUPLING = "decoupling"
+ASCENT = "ascent"
 
 # ── Recovery ────────────────────────────────────────────────────────────────────
 HRV_BASELINE = "hrv_baseline"
@@ -74,6 +77,13 @@ REGISTRY: dict[str, DerivedDef] = {
         _d(ACWR, "ratio", 42, "atl / ctl; roughly 0.8-1.3 is the settled range"),
         _d(MONOTONY, "ratio", 7, "Foster: weekly mean load / its standard deviation"),
         _d(STRAIN, "au", 7, "Foster: weekly load x monotony"),
+        _d(
+            DECOUPLING,
+            "%",
+            1,
+            "Friel: how much more the second half cost per heartbeat; needs a FIT file",
+        ),
+        _d(ASCENT, "m", 1, "metres climbed, from the altimeter rather than the summary"),
         _d(HRV_BASELINE, "ms", 60),
         _d(HRV_DEVIATION, "sd", 60, "today against this person's own spread"),
         _d(RHR_BASELINE, "bpm", 60),

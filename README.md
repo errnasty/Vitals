@@ -29,7 +29,7 @@ phase 3.
 | 1 | JWT auth: self-issued tokens, pluggable OIDC provider | **code complete** |
 | 2 | Garmin connector: local SSO login, encrypted DB token store, rate governor, backfill | **code complete** |
 | 3 | Normalizers → canonical silver model | **code complete** |
-| 3b | FIT download, storage and parsing | |
+| 3b | FIT download, storage and parsing | **code complete** |
 | 4 | Analytics engine (training load, recovery, sleep, body, longevity) | **code complete** |
 | 5 | Vitals Score: pillars, coverage, calibration, contributions waterfall | **code complete** |
 | 6 | Next.js dashboard: Today, Breakdown, Trends | **code complete** |

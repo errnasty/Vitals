@@ -17,14 +17,14 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vitals.analytics import canonical as d
-from vitals.db.models import Activity, SleepSession
+from vitals.db.models import Activity, ActivityDetail, SleepSession
 from vitals.normalize.resolver import DEFAULT_PREFERENCE, daily_series
 
 # The longest lookback anything declares. Loading reaches back this far behind the
@@ -96,6 +96,19 @@ class Night:
 
 
 @dataclass(frozen=True, slots=True)
+class DayRecording:
+    """One day's recordings, reduced to what a daily metric can use.
+
+    Decoupling is taken from the longest qualifying activity rather than averaged
+    across the day. It is a property of one sustained effort; averaging a two-hour
+    ride with a twenty-minute warm-up jog produces a number describing neither.
+    """
+
+    decoupling_pct: float | None
+    ascent_m: float | None
+
+
+@dataclass(frozen=True, slots=True)
 class Inputs:
     """Everything one analytics run reads, loaded once."""
 
@@ -106,6 +119,9 @@ class Inputs:
     # Sum of every activity's training load, by day. Absent means a rest day.
     activity_load: dict[date, float]
     activity_count: dict[date, int]
+    # What the FIT files added, by day. Empty for anyone whose recordings have not
+    # been downloaded yet, which is why nothing downstream may require it.
+    recordings: dict[date, DayRecording] = field(default_factory=dict)
 
     def get(self, metric: str) -> Series:
         return self.series[metric]
@@ -159,6 +175,7 @@ async def load_inputs(
 
     nights = await _load_nights(session, user_id=user_id, start=history_start, end=end)
     load, counts = await _load_activity_load(session, user_id=user_id, start=history_start, end=end)
+    recordings = await _load_recordings(session, user_id=user_id, start=history_start, end=end)
 
     return Inputs(
         start=start,
@@ -167,7 +184,50 @@ async def load_inputs(
         nights=nights,
         activity_load=load,
         activity_count=counts,
+        recordings=recordings,
     )
+
+
+async def _load_recordings(
+    session: AsyncSession, *, user_id: uuid.UUID, start: date, end: date
+) -> dict[date, DayRecording]:
+    """Per-day facts from the FIT files, joined back through the activity.
+
+    Joined rather than keyed by date directly, because `activity_detail` deliberately
+    holds no date of its own: the activity owns when it happened, and storing that
+    twice is how the two come to disagree.
+    """
+    rows = (
+        await session.execute(
+            select(
+                Activity.started_at,
+                Activity.duration_s,
+                ActivityDetail.decoupling_pct,
+                ActivityDetail.ascent_m,
+            )
+            .join(ActivityDetail, ActivityDetail.activity_id == Activity.id)
+            .where(Activity.user_id == user_id, Activity.started_at.is_not(None))
+        )
+    ).all()
+
+    longest: dict[date, float] = {}
+    decoupling: dict[date, float] = {}
+    ascent: dict[date, float] = {}
+
+    for started_at, duration_s, decouple, climb in rows:
+        day = started_at.date()
+        if day < start or day > end:
+            continue
+        if climb is not None:
+            ascent[day] = ascent.get(day, 0.0) + climb
+        if decouple is not None and (duration_s or 0.0) >= longest.get(day, -1.0):
+            longest[day] = duration_s or 0.0
+            decoupling[day] = decouple
+
+    return {
+        day: DayRecording(decoupling_pct=decoupling.get(day), ascent_m=ascent.get(day))
+        for day in set(decoupling) | set(ascent)
+    }
 
 
 async def _load_nights(

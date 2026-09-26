@@ -216,3 +216,52 @@ async def test_advancing_without_a_request_does_nothing(
     result = await backfill.advance(pg_session, user_id=connected.id)
     assert fake.windows == []
     assert not result.running
+
+
+# ── self-healing ────────────────────────────────────────────────────────────────
+
+
+async def test_an_account_that_never_asked_for_history_gets_asked_for_it(
+    pg_session: AsyncSession, connected: AppUser, source
+) -> None:
+    """The real gap this closes.
+
+    The connect-time request shipped in the same deploy as the migration that added
+    these columns, so an account connected fifteen minutes earlier had no cursor to
+    write — and nothing afterwards would ever notice. The incremental sync kept
+    pulling its trailing week forever and the dashboard showed eight days of data,
+    with no error anywhere to explain why.
+    """
+    source()
+    row = await _connection(pg_session, connected.id)
+    assert row.backfill_from is None  # exactly the state that account was in
+
+    asked = await backfill.ensure_requested(pg_session, user_id=connected.id, end=TODAY)
+
+    assert asked is True
+    row = await _connection(pg_session, connected.id)
+    assert row.backfill_from is not None
+    assert row.backfill_cursor == TODAY
+
+
+async def test_it_does_not_re_ask_once_history_has_been_requested(
+    pg_session: AsyncSession, connected: AppUser, source, no_rebuild
+) -> None:
+    """Asking again would rewind a finished pull and re-fetch years for nothing."""
+    source()
+    await backfill.request(pg_session, user_id=connected.id, years=1, end=TODAY)
+    await backfill.advance(pg_session, user_id=connected.id, chunk_days=400)
+    finished = await _connection(pg_session, connected.id)
+    assert finished.backfill_finished_at is not None
+
+    asked = await backfill.ensure_requested(pg_session, user_id=connected.id, end=TODAY)
+
+    assert asked is False
+    again = await _connection(pg_session, connected.id)
+    assert again.backfill_cursor == finished.backfill_cursor
+
+
+async def test_nothing_is_asked_for_an_account_with_no_connection(
+    pg_session: AsyncSession, pg_user: AppUser
+) -> None:
+    assert await backfill.ensure_requested(pg_session, user_id=pg_user.id) is False

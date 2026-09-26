@@ -364,3 +364,41 @@ async def test_the_inventory_reports_what_can_be_computed(
     inventory = await available_metrics(pg_session, user_id=pg_user.id)
 
     assert inventory[c.RESTING_HR] == (DAY, NEXT, 2)
+
+
+async def test_a_barren_payload_reports_its_shape_not_its_contents(
+    pg_session: AsyncSession, pg_user: AppUser, caplog
+) -> None:
+    """Which keys, never which values.
+
+    "Every sleep payload produced nothing" is a real finding and a useless one: it
+    cannot tell you whether Garmin sent an empty response or the normalizer is
+    reading the wrong keys, and working that out used to mean reading someone's raw
+    health data out of the database. Key names separate the two cases and are not
+    health data.
+    """
+    from vitals.normalize.runner import _shape
+
+    payload = {
+        "calendarDate": "2026-09-20",
+        "values": {"totalSleepTimeInSeconds": 26400, "restingHeartRate": 48},
+    }
+
+    shape = _shape(payload)
+
+    assert "calendarDate" in shape
+    assert "totalSleepTimeInSeconds" in shape
+    # The numbers themselves never appear.
+    assert "26400" not in shape
+    assert "48" not in shape
+
+
+def test_shape_survives_whatever_an_unofficial_api_returns() -> None:
+    from vitals.normalize.runner import _shape
+
+    assert _shape(None) == "NoneType"
+    assert _shape([]) == "[0]"
+    assert _shape({}) == "{}"
+    assert _shape("a string") == "str"
+    # A list of dicts reports the first item's keys, since they are all the same shape.
+    assert "calendarDate" in _shape([{"calendarDate": "2026-09-20", "value": 1}])

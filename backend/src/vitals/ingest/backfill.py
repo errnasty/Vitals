@@ -81,10 +81,18 @@ async def request(
     if connection is None:  # pragma: no cover - a connection is written before this
         return
 
-    today = end or datetime.now(UTC).date()
+    # The anchor: the day the history was asked from, which is where the cursor
+    # starts and what `progress` measures coverage against. The timestamp is
+    # derived from it rather than read separately, so the two cannot disagree —
+    # a caller passing an explicit `end` used to leave them days apart, and the
+    # reported fraction was quietly wrong for as long as they differed.
+    now = datetime.now(UTC)
+    today = end or now.date()
     connection.backfill_from = today - timedelta(days=round(span * 365.25))
     connection.backfill_cursor = today
-    connection.backfill_started_at = datetime.now(UTC)
+    connection.backfill_started_at = (
+        now if end is None else datetime(today.year, today.month, today.day, tzinfo=UTC)
+    )
     connection.backfill_finished_at = None
     await session.commit()
 
@@ -93,6 +101,32 @@ async def request(
         since=connection.backfill_from.isoformat(),
         years=span,
     )
+
+
+async def ensure_requested(
+    session: AsyncSession, *, user_id: uuid.UUID, end: date | None = None
+) -> bool:
+    """Ask for history if nobody ever has. Returns True when this call asked.
+
+    Self-healing, and it exists because of a real gap rather than as a precaution.
+    The connect-time request landed in the same deploy as the migration that added
+    these columns — so an account connected fifteen minutes earlier had no cursor to
+    write, and nothing afterwards would ever notice. The incremental sync kept
+    pulling its trailing week, forever, and the dashboard showed eight days of data
+    with no error anywhere to explain why.
+
+    An account with credentials and no history request is that state, whatever
+    caused it. Asking here costs nothing when the answer is already recorded, and
+    it means nobody has to reconnect to fix it — which matters, because
+    reconnecting means another SSO attempt from a datacenter IP.
+    """
+    connection = await connection_for(session, user_id)
+    if connection is None or connection.backfill_from is not None:
+        return False
+
+    await request(session, user_id=user_id, end=end)
+    log.info("backfill.self_requested", reason="no history had ever been asked for")
+    return True
 
 
 async def progress(session: AsyncSession, *, user_id: uuid.UUID) -> BackfillProgress:

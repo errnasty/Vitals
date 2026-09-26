@@ -65,6 +65,9 @@ async def _resume_backfill(session: AsyncSession, *, email: str | None) -> None:
         return
 
     try:
+        # An account that has never asked for history gets asked for here, so a
+        # connection made before this existed still ends up with its archive.
+        await backfill.ensure_requested(session, user_id=user.id)
         result = await backfill.run(session, user_id=user.id)
     except Exception as exc:  # noqa: BLE001 - reported, never fatal to the sync
         log.error("sync.backfill_failed", error=f"{type(exc).__name__}: {exc}")

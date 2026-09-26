@@ -78,6 +78,37 @@ class NormalizeResult:
         return self.daily + self.samples + self.sleep + self.activities
 
 
+# How many keys of an empty payload are worth naming. Enough to recognise the
+# response, short enough that a log line stays a log line.
+SHAPE_KEYS = 12
+
+
+def _shape(payload: object, depth: int = 0) -> str:
+    """The key names of a payload, never its values.
+
+    Deliberately structure-only. A barren warning that says which endpoint produced
+    nothing cannot distinguish "Garmin returned an empty response" from "the
+    normalizer is reading the wrong keys", and the only way to tell them apart used
+    to be reading someone's raw health data out of the database. Key names settle it
+    and are not health data.
+    """
+    if isinstance(payload, dict):
+        keys = list(payload)[:SHAPE_KEYS]
+        more = "…" if len(payload) > SHAPE_KEYS else ""
+        inner = ""
+        # One level down for the wrapper shapes Garmin favours, where the useful
+        # names are never at the top.
+        if depth == 0:
+            for key in ("values", "individualStats", "allMetrics", "dailyMetrics"):
+                if isinstance(payload.get(key), (dict, list)):
+                    inner = f" {key}=" + _shape(payload[key], depth + 1)
+                    break
+        return "{" + ", ".join(keys) + more + "}" + inner
+    if isinstance(payload, list):
+        return f"[{len(payload)}]" + (_shape(payload[0], depth) if payload else "")
+    return type(payload).__name__
+
+
 def _window(statement: Select[Any], start: date | None, end: date | None) -> Select[Any]:
     """Restrict to a date window, keeping undated payloads.
 
@@ -310,6 +341,7 @@ async def _run_endpoint(
 ) -> EndpointCoverage:
     fn = NORMALIZERS[endpoint].fn
     payloads = rows = barren = 0
+    barren_shape: str | None = None
     cursor: tuple[datetime, uuid.UUID] | None = None
 
     while True:
@@ -356,6 +388,8 @@ async def _run_endpoint(
                 batch.append((payload_id, normalized))
             else:
                 barren += 1
+                if barren_shape is None:
+                    barren_shape = _shape(payload)
 
         if batch and not dry_run:
             written = await writer.write(batch)
@@ -370,6 +404,17 @@ async def _run_endpoint(
 
     total.payloads += payloads
     if barren:
-        log.warning("normalize.barren_payloads", endpoint=endpoint, barren=barren, seen=payloads)
+        # The shape, not the contents. "Every sleep payload produced nothing" is a
+        # real finding and a useless one: it cannot tell you whether Garmin sent an
+        # empty response or the normalizer is looking for the wrong keys, and the
+        # only way to find out was to read the person's raw health data. Key names
+        # separate those two cases without any of that leaving the database.
+        log.warning(
+            "normalize.barren_payloads",
+            endpoint=endpoint,
+            barren=barren,
+            seen=payloads,
+            shape=barren_shape,
+        )
 
     return EndpointCoverage(endpoint=endpoint, payloads=payloads, rows=rows, barren=barren)

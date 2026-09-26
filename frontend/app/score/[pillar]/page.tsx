@@ -1,10 +1,12 @@
 import {
   AppShell,
+  Badge,
   BottomNav,
   Button,
   Card,
   CardHeader,
   Gutter,
+  ListRow,
   ProgressRing,
   SectionHeader,
   Stack,
@@ -83,6 +85,31 @@ export default async function PillarPage({
             />
             <p className={prose.note}>{pillar.summary}</p>
           </Card>
+
+          {pillar.reference ? (
+            <Card>
+              <CardHeader
+                title={pillar.reference.label}
+                subtitle={longDate(pillar.reference.date)}
+                icon="moon"
+                action={<Badge tone="neutral">{pillar.reference.value}</Badge>}
+              />
+              <p className={prose.note}>{pillar.reference.explanation}</p>
+            </Card>
+          ) : null}
+
+          {pillar.readings.length ? (
+            <Card padding="sm">
+              <CardHeader title="Measured" icon="pulse" />
+              {pillar.readings.map((reading) => (
+                <ListRow
+                  key={reading.label}
+                  label={reading.label}
+                  value={reading.value}
+                />
+              ))}
+            </Card>
+          ) : null}
 
           {pillar.trusted ? null : (
             <Notice

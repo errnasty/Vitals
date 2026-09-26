@@ -137,6 +137,15 @@ export type FactorView = {
   advice: string | null;
 };
 
+export type ReadingView = { label: string; value: string };
+
+export type ReferenceView = {
+  label: string;
+  value: string;
+  date: string;
+  explanation: string;
+};
+
 export type PillarDetail = {
   name: string;
   label: string;
@@ -147,6 +156,8 @@ export type PillarDetail = {
   weight: string;
   summary: string;
   factors: FactorView[];
+  reference: ReferenceView | null;
+  readings: ReadingView[];
 };
 
 export type PillarResponse = { date: string; pillar: PillarDetail };

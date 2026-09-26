@@ -166,3 +166,29 @@ Three curves, three honest kinds of answer:
 and an app that presents it as a target is teaching you to chase a reading instead of
 the sleep and training that produce it. Observed lines get no target and no gap
 sentence — only the note about what they answer to.
+
+
+## The Sleep pillar is not Garmin's sleep score
+
+They are different measurements, and the app now shows both rather than leaving the
+reader to assume one is broken.
+
+| | Garmin's sleep score | the Sleep pillar |
+|---|---|---|
+| Scope | last night | the week |
+| Built from | Garmin's own model of stages and quality | duration, debt, regularity, efficiency |
+| Windows | one night | 7 days, and 14 for debt and regularity |
+
+Both can be right at the same time — a good night inside a ragged fortnight scores well
+on one and poorly on the other, which is the whole point of measuring the week.
+
+The pillar deliberately does **not** score Garmin's number. It is a proprietary model
+that changes without notice, and building on it would make this app a relabelling of
+Garmin's opinion rather than a second one. But not *showing* it, while displaying a
+different number under the word "Sleep", was worse: two numbers with one label and no
+explanation reads as a bug, and reasonably so. `/score/pillar/sleep` now carries the
+device's own score, the night it was measured on, and a sentence about why the two
+differ.
+
+The same page shows the raw night — time asleep, deep, REM, awake — because a score
+nobody can check against a measurement is a score nobody should trust.

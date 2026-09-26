@@ -33,7 +33,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vitals.analytics import canonical as gold
 from vitals.api import format as fmt
 from vitals.api.deps import CurrentUserDep, SessionDep
-from vitals.db.models import ScoreContribution, ScorePillar, VitalsScore
+from vitals.db.models import MetricDaily, ScoreContribution, ScorePillar, VitalsScore
+from vitals.normalize import canonical as silver
 from vitals.score import curves
 from vitals.score.compose import MIN_TRUSTED_COVERAGE
 from vitals.score.pillars import BY_NAME, PILLARS, Contribution, target_for
@@ -73,6 +74,29 @@ class FactorView(BaseModel):
     advice: str | None = None
 
 
+class ReadingView(BaseModel):
+    """A measured figure, shown as context rather than scored."""
+
+    label: str
+    value: str
+
+
+class ReferenceView(BaseModel):
+    """The device's own score for the same domain, where it publishes one.
+
+    Garmin puts a sleep score in front of you every morning, and an app that shows
+    a different number under the word "Sleep" without ever showing that one looks
+    broken — reasonably, because the only visible explanation for two numbers is
+    that one of them is wrong. They are measuring different things, so the fix is to
+    show both and say which is which, not to bend one towards the other.
+    """
+
+    label: str
+    value: str
+    date: date
+    explanation: str
+
+
 class PillarDetail(BaseModel):
     name: str
     label: str
@@ -84,6 +108,11 @@ class PillarDetail(BaseModel):
     weight: str
     summary: str
     factors: list[FactorView]
+    # The device's own headline for this domain, and last night's raw figures —
+    # neither scored, both there so the number above can be checked against
+    # something recognisable.
+    reference: ReferenceView | None = None
+    readings: list[ReadingView] = []
 
 
 class PillarResponse(BaseModel):
@@ -277,6 +306,82 @@ def _summary(name: str, score: float, coverage: float) -> str:
 # ── reads ───────────────────────────────────────────────────────────────────────
 
 
+async def _silver(
+    session: AsyncSession, user_id: uuid.UUID, metric: str, day: date
+) -> tuple[float, str, date] | None:
+    """The most recent reading of a silver metric at or before `day`."""
+    row: MetricDaily | None = await session.scalar(
+        select(MetricDaily)
+        .where(
+            MetricDaily.user_id == user_id,
+            MetricDaily.metric == metric,
+            MetricDaily.calendar_date <= day,
+        )
+        .order_by(MetricDaily.calendar_date.desc())
+        .limit(1)
+    )
+    return None if row is None else (row.value, row.unit, row.calendar_date)
+
+
+SLEEP_EXPLANATION = (
+    "Garmin scores last night on its own scale. The number above is the week — how "
+    "much you slept, how regularly, and how efficiently — so the two move "
+    "differently and often disagree. Neither is wrong; they answer different "
+    "questions, and only the week-scale one is worth acting on."
+)
+
+
+async def _reference(
+    session: AsyncSession, user_id: uuid.UUID, pillar: str, day: date
+) -> ReferenceView | None:
+    """The device's own score for this pillar's domain, if it publishes one."""
+    if pillar != "sleep":
+        # Garmin's other daily scores (Body Battery, training readiness) are not
+        # the same shape as a pillar, so pretending they are would be worse than
+        # showing nothing.
+        return None
+
+    found = await _silver(session, user_id, silver.SLEEP_SCORE, day)
+    if found is None:
+        return None
+    value, _unit, measured = found
+    return ReferenceView(
+        label="Garmin's sleep score",
+        value=fmt.score(value),
+        date=measured,
+        explanation=SLEEP_EXPLANATION,
+    )
+
+
+# What each pillar is worth showing the raw numbers for. Measured, never scored —
+# the score has its own section, and these are here to be recognised.
+RAW_READINGS: dict[str, tuple[tuple[str, str], ...]] = {
+    "sleep": (
+        (silver.SLEEP_DURATION, "Time asleep"),
+        (silver.SLEEP_DEEP, "Deep"),
+        (silver.SLEEP_REM, "REM"),
+        (silver.SLEEP_AWAKE, "Awake"),
+    ),
+    "recovery": (
+        (silver.HRV_OVERNIGHT_AVG, "Overnight HRV"),
+        (silver.RESTING_HR, "Resting heart rate"),
+    ),
+    "longevity": ((silver.STEPS, "Steps"),),
+}
+
+
+async def _readings(
+    session: AsyncSession, user_id: uuid.UUID, pillar: str, day: date
+) -> list[ReadingView]:
+    out: list[ReadingView] = []
+    for metric, label in RAW_READINGS.get(pillar, ()):
+        found = await _silver(session, user_id, metric, day)
+        if found is not None:
+            value, unit, _ = found
+            out.append(ReadingView(label=label, value=fmt.metric(value, unit)))
+    return out
+
+
 async def _day(session: AsyncSession, user_id: uuid.UUID, day: date | None) -> VitalsScore:
     statement = select(VitalsScore).where(VitalsScore.user_id == user_id)
     if day is not None:
@@ -410,5 +515,7 @@ async def pillar_detail(
             weight=fmt.percent(stored.weight, of_one=False),
             summary=_summary(name, stored.score, stored.coverage),
             factors=factors,
+            reference=await _reference(session, user.id, name, on),
+            readings=await _readings(session, user.id, name, on),
         ),
     )

@@ -274,3 +274,97 @@ async def test_a_day_with_no_score_is_a_404(
         response = await http.get("/score/detail", params={"day": "2020-01-01"}, headers=_auth())
 
     assert response.status_code == 404
+
+
+# ── the device's own number ─────────────────────────────────────────────────────
+
+
+async def _sleep_night(session: AsyncSession, *, score: float, duration: float) -> None:
+    from vitals.db.models import MetricDaily
+    from vitals.normalize import canonical as silver
+
+    session.add_all(
+        [
+            MetricDaily(
+                user_id=USER_ID,
+                metric=silver.SLEEP_SCORE,
+                calendar_date=DAY,
+                source="garmin",
+                value=score,
+                unit="score",
+            ),
+            MetricDaily(
+                user_id=USER_ID,
+                metric=silver.SLEEP_DURATION,
+                calendar_date=DAY,
+                source="garmin",
+                value=duration,
+                unit="s",
+            ),
+        ]
+    )
+    await session.commit()
+
+
+async def test_the_sleep_page_shows_garmin_s_own_score(
+    client: ClientFactory, pg_session: AsyncSession
+) -> None:
+    """The bug behind "this data is not accurate".
+
+    Garmin puts a sleep score in front of you every morning. The app was capturing
+    it into silver and showing it nowhere, while displaying a different number under
+    the word "Sleep" — a week-scale composite of duration, debt, regularity and
+    efficiency. Two numbers, one label, no explanation: the only available reading
+    is that one of them is broken.
+    """
+    await seed(pg_session)
+    await _sleep_night(pg_session, score=80.0, duration=7.5 * 3600)
+
+    async with client() as http:
+        body = (await http.get("/score/pillar/sleep", headers=_auth())).json()
+
+    reference = body["pillar"]["reference"]
+    assert reference is not None
+    assert reference["value"] == "80"
+    assert "Garmin" in reference["label"]
+    # And it says why it differs, rather than leaving the reader to guess.
+    assert "week" in reference["explanation"]
+
+
+async def test_the_sleep_page_shows_the_night_it_measured(
+    client: ClientFactory, pg_session: AsyncSession
+) -> None:
+    """Formatted by Python, like everything else on screen."""
+    await seed(pg_session)
+    await _sleep_night(pg_session, score=80.0, duration=7.5 * 3600)
+
+    async with client() as http:
+        body = (await http.get("/score/pillar/sleep", headers=_auth())).json()
+
+    readings = {r["label"]: r["value"] for r in body["pillar"]["readings"]}
+    assert readings["Time asleep"] == "7h 30m"
+
+
+async def test_a_pillar_garmin_has_no_score_for_offers_none(
+    client: ClientFactory, pg_session: AsyncSession
+) -> None:
+    """Body Battery and training readiness are not the same shape as a pillar, and
+    pretending otherwise would be worse than showing nothing."""
+    await seed(pg_session)
+
+    async with client() as http:
+        body = (await http.get("/score/pillar/training", headers=_auth())).json()
+
+    assert body["pillar"]["reference"] is None
+
+
+async def test_no_sleep_score_recorded_means_no_reference(
+    client: ClientFactory, pg_session: AsyncSession
+) -> None:
+    await seed(pg_session)
+
+    async with client() as http:
+        body = (await http.get("/score/pillar/sleep", headers=_auth())).json()
+
+    assert body["pillar"]["reference"] is None
+    assert body["pillar"]["readings"] == []

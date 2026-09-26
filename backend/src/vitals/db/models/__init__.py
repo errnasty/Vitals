@@ -16,6 +16,7 @@ from vitals.db.models.credential import (
     Credential,
 )
 from vitals.db.models.derived import DerivedDaily
+from vitals.db.models.insight import Insight
 from vitals.db.models.metric import MetricDaily, MetricSample
 from vitals.db.models.raw_payload import RawPayload
 from vitals.db.models.score import ScoreContribution, ScorePillar, VitalsScore
@@ -38,6 +39,7 @@ __all__ = [
     "DayContext",
     "DayNote",
     "DerivedDaily",
+    "Insight",
     "MetricDaily",
     "MetricSample",
     "RawPayload",

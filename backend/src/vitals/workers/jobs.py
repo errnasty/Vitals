@@ -19,6 +19,7 @@ from vitals.ai.brief import generate as write_brief
 from vitals.analytics import recompute as recompute_gold
 from vitals.db.session import dispose_engine, get_sessionmaker
 from vitals.ingest.pipeline import NoSuchUser, resolve_user, run_backfill, run_incremental
+from vitals.insights.engine import refresh as refresh_insights
 from vitals.logging import get_logger
 from vitals.normalize import normalize as normalize_silver
 from vitals.score import score as score_day
@@ -151,6 +152,23 @@ async def _refresh_derived(
             attempts=brief.attempts,
             tokens=brief.prompt_tokens + brief.completion_tokens,
         )
+
+    try:
+        # Cheap to skip and expensive to run: the engine's first act is to count
+        # tagged days, so an account with nothing logged costs one query. Only an
+        # account that can actually support a test pays for the permutations.
+        found = await refresh_insights(session, user_id=user.id)
+    except Exception as exc:  # noqa: BLE001 - reported, never fatal to the sync
+        log.error("sync.insights_failed", error=f"{type(exc).__name__}: {exc}")
+        return
+
+    log.info(
+        "sync.insights_refreshed",
+        tested=found.tested,
+        found=found.found,
+        tagged_days=found.tagged_days,
+        skipped=found.skipped,
+    )
 
 
 async def run_history(*, start: date, end: date, email: str | None = None) -> SyncOutcome:

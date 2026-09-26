@@ -205,15 +205,27 @@ async def pull_history(user_id: uuid.UUID) -> None:
     """Work the history pull, on its own session, after the response has gone.
 
     Its own session because the request's is closed the moment the response is
-    written, and this outlives it by minutes. Nothing here can fail the connection
-    that started it — by the time this runs the tokens are stored and the user has
-    already been told they are connected.
+    written, and this outlives it by minutes.
+
+    **It must not be able to un-connect the login that started it.** That used to be
+    a comment claiming the pull was harmless, and it was simply wrong: the sync marks
+    a connection `needs_reauth` when a call comes back unauthenticated, and this pull
+    goes through the same code. So a login that genuinely succeeded — tokens minted,
+    user told they were connected — could be demoted seconds later by the first
+    request of the backfill, putting the login form back on screen.
+
+    That is the worst possible response to the failure it is reacting to. Garmin's SSO
+    punishes repeated attempts from a datacenter IP, so sending someone back to sign in
+    again is how a transient rejection turns into a locked account. Tokens this fresh
+    have already proved themselves; if they really are bad, the next scheduled sync
+    will say so, from a run that is not competing with the login that made them.
     """
     from vitals.db.session import get_sessionmaker
 
     try:
         async with get_sessionmaker()() as session:
             result = await backfill.run(session, user_id=user_id)
+            await _keep_connected(session, user_id=user_id)
         log.info(
             "garmin.history_pulled",
             chunks=result.chunks,
@@ -222,6 +234,20 @@ async def pull_history(user_id: uuid.UUID) -> None:
         )
     except Exception as exc:  # noqa: BLE001 - a background task has nobody to raise to
         log.error("garmin.history_failed", error=f"{type(exc).__name__}: {exc}")
+
+
+async def _keep_connected(session: AsyncSession, *, user_id: uuid.UUID) -> None:
+    """Undo a `needs_reauth` the connect-time history pull wrote. See `pull_history`."""
+    connection = await connection_for(session, user_id)
+    if connection is None or connection.status != "needs_reauth":
+        return
+
+    connection.status = "active"
+    connection.status_detail = (
+        "the first history pull could not authenticate; the next sync will retry"
+    )
+    await session.commit()
+    log.warning("garmin.history_unauthenticated", kept="active")
 
 
 async def _store_tokens(

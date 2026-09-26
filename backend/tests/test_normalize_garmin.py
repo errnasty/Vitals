@@ -127,11 +127,21 @@ PAYLOADS: dict[str, object] = {
         "highestRespirationValue": 21.0,
         "respirationValuesArray": [[NOON_MS, 13], [NOON_MS + 180_000, 15]],
     },
-    "max_metrics": {
-        "calendarDate": "2026-08-21",
-        "generic": {"vo2MaxPreciseValue": 52.3, "vo2MaxValue": 52},
-        "cycling": {"vo2MaxPreciseValue": 48.1},
-    },
+    # The shape Garmin actually sends: a list of one, with the date on the nested
+    # block rather than the top level. The invented flat dict this used to hold made
+    # the test pass while production normalized nothing for months.
+    "max_metrics": [
+        {
+            "userId": 1234,
+            "generic": {
+                "calendarDate": "2026-08-21",
+                "vo2MaxPreciseValue": 52.3,
+                "vo2MaxValue": 52,
+            },
+            "cycling": {"calendarDate": "2026-08-21", "vo2MaxPreciseValue": 48.1},
+            "heatAltitudeAcclimation": None,
+        }
+    ],
     "training_status": {
         "calendarDate": "2026-08-21",
         "mostRecentVO2Max": {"generic": {"vo2MaxPreciseValue": 51.9}},
@@ -332,6 +342,22 @@ def test_max_metrics_splits_running_from_cycling_vo2max() -> None:
 
     assert values[c.VO2MAX_RUNNING] == 52.3
     assert values[c.VO2MAX_CYCLING] == 48.1
+
+
+def test_max_metrics_dates_itself_when_the_range_response_could_not_be_split() -> None:
+    """The case that silently emptied the Fitness card.
+
+    A range response with no top-level date never splits, so it reaches the normalizer
+    as the whole list with `calendar_date` unset. Reading the day off the nested block
+    is the only thing that saves it, and without that this returns nothing at all.
+    """
+    normalized = NORMALIZERS["max_metrics"].fn(
+        Bronze(endpoint="max_metrics", payload=PAYLOADS["max_metrics"], calendar_date=None)
+    )
+
+    values = _values(normalized)
+    assert values[c.VO2MAX_RUNNING] == 52.3
+    assert {row.calendar_date for row in normalized.daily} == {date(2026, 8, 21)}
 
 
 def test_booleans_are_never_mistaken_for_numbers() -> None:

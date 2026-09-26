@@ -512,6 +512,19 @@ def respiration(bronze: Bronze) -> Normalized:
 # ── fitness ─────────────────────────────────────────────────────────────────────
 
 
+def _unwrap(payload: Any) -> Any:
+    """A single-record response that arrives wrapped in a list.
+
+    `get_max_metrics_range` returns `[{...}]` rather than `{...}`, and the record
+    inside carries no top-level date, so `split_dated` cannot split it and it lands in
+    bronze as the list it arrived as. Unwrapping here rather than at capture keeps
+    bronze verbatim, which is the whole point of bronze.
+    """
+    if isinstance(payload, list) and len(payload) == 1:
+        return payload[0]
+    return payload
+
+
 def _vo2max(container: Any) -> tuple[Any, Any]:
     """`(running, cycling)` VO2max out of whichever nesting this response uses."""
     generic = _first(container, "generic") or {}
@@ -523,11 +536,29 @@ def _vo2max(container: Any) -> tuple[Any, Any]:
 
 @normalizer("max_metrics")
 def max_metrics(bronze: Bronze) -> Normalized:
-    payload = bronze.payload
-    day = _resolve_day(bronze, payload)
+    """VO2max, which is half of the Fitness headline and the whole longevity anchor.
+
+    Two things about the real response cost this normalizer its entire output for
+    months, and neither was visible from the library's signature. The response is a
+    **list of one**, not a record; and the date lives on the nested `generic` block
+    rather than at the top level. A fixture written from the shape the code expected
+    passed happily while production stored nothing at all, which is why the fixture
+    below is now the shape Garmin actually sends.
+    """
+    payload = _unwrap(bronze.payload)
+    running, cycling = _vo2max(payload)
+
+    # The date is on the nested block, so it has to be looked for there before the
+    # payload's own (absent) top level.
+    day = bronze.calendar_date
+    if day is None:
+        for block in (_first(payload, "generic"), _first(payload, "cycling"), payload):
+            day = _day(_first(block, "calendarDate", "calendar_date", "date"))
+            if day is not None:
+                break
     if day is None:
         return Normalized()
-    running, cycling = _vo2max(payload)
+
     return Normalized(daily=_daily(day, {c.VO2MAX_RUNNING: running, c.VO2MAX_CYCLING: cycling}))
 
 

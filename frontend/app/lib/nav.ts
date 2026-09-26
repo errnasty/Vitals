@@ -9,6 +9,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "today", label: "Today", icon: "home", href: "/" },
   { id: "trends", label: "Trends", icon: "chart", href: "/trends" },
   { id: "score", label: "Score", icon: "target", href: "/score" },
+  { id: "log", label: "The day", icon: "plus", href: "/log" },
 ];
 
 export const navFor = (active: string): NavItem[] =>

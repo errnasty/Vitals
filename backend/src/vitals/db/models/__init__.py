@@ -7,6 +7,7 @@ from vitals.db.base import Base
 from vitals.db.models.activity import Activity
 from vitals.db.models.app_user import AppUser
 from vitals.db.models.brief import SOURCE_MODEL, SOURCE_PYTHON, DailyBrief
+from vitals.db.models.context import DayContext, DayNote
 from vitals.db.models.credential import (
     GARMIN_LOGIN_ATTEMPTS,
     GARMIN_PASSWORD,
@@ -34,6 +35,8 @@ __all__ = [
     "Base",
     "Credential",
     "DailyBrief",
+    "DayContext",
+    "DayNote",
     "DerivedDaily",
     "MetricDaily",
     "MetricSample",

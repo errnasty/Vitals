@@ -184,6 +184,23 @@ export type ScoreDetail = {
   opportunities: FactorView[];
 };
 
+export type TagOption = {
+  name: string;
+  label: string;
+  hint: string;
+  icon: string;
+  magnitude: string | null;
+};
+
+export type TagValue = { name: string; magnitude: number | null };
+
+export type DayContext = {
+  date: string;
+  tags: TagValue[];
+  note: string | null;
+  vocabulary: TagOption[];
+};
+
 /** Either the payload, or a sentence a person can act on. */
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -235,7 +252,7 @@ async function get<T>(path: string): Promise<Result<T>> {
  * the credentials, not that our own token expired, and the API's own sentence is the
  * one worth showing. Read it out of the body rather than substituting a generic line.
  */
-async function post<T>(path: string, body: unknown): Promise<Result<T>> {
+async function send<T>(method: string, path: string, body: unknown): Promise<Result<T>> {
   if (!API_TOKEN) {
     return {
       ok: false,
@@ -245,7 +262,7 @@ async function post<T>(path: string, body: unknown): Promise<Result<T>> {
 
   try {
     const response = await fetch(`${API_URL}${path}`, {
-      method: "POST",
+      method,
       headers: {
         Authorization: `Bearer ${API_TOKEN}`,
         "Content-Type": "application/json",
@@ -273,11 +290,17 @@ async function post<T>(path: string, body: unknown): Promise<Result<T>> {
   }
 }
 
+const put = <T,>(path: string, body: unknown) => send<T>("PUT", path, body);
+
 export const fetchToday = () => get<Today>("/today");
+export const fetchContext = (day?: string) =>
+  get<DayContext>(`/context${day ? `?day=${day}` : ""}`);
 export const fetchScoreDetail = (day?: string) =>
   get<ScoreDetail>(`/score/detail${day ? `?day=${day}` : ""}`);
 export const fetchPillar = (name: string, day?: string) =>
   get<PillarResponse>(`/score/pillar/${name}${day ? `?day=${day}` : ""}`);
+const post = <T,>(path: string, body: unknown) => send<T>("POST", path, body);
+
 export const fetchGarminStatus = () => get<GarminStatus>("/garmin/status");
 export const postGarminConnect = (email: string, password: string) =>
   post<ConnectResult>("/garmin/connect", { email, password });
@@ -286,6 +309,10 @@ export const postGarminMfa = (code: string) =>
 export const postGarminDisconnect = () => post<GarminStatus>("/garmin/disconnect", {});
 export const postGarminSync = () =>
   post<{ started: boolean; detail: string }>("/garmin/sync", {});
+export const putContextTags = (tags: TagValue[], day?: string) =>
+  put<DayContext>(`/context/tags${day ? `?day=${day}` : ""}`, { tags });
+export const putContextNote = (note: string | null, day?: string) =>
+  put<DayContext>(`/context/note${day ? `?day=${day}` : ""}`, { note });
 export const fetchExplain = (day?: string) =>
   get<Explain>(`/score/explain${day ? `?day=${day}` : ""}`);
 export const fetchTrends = (days = 90) => get<Trends>(`/trends?days=${days}`);

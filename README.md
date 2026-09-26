@@ -89,6 +89,7 @@ frontend/
   app/            the product's screens — feature work only
   design/         the UI template: tokens, both themes, primitives, style guide
 docs/             deployment, local dev, auth, garmin, silver, analytics, score, ai,
+                  context,
                   dashboard, design-system
 docker-compose.yml  local dev only
 ```

@@ -1,0 +1,117 @@
+/*
+ * The coach.
+ *
+ * Three things stacked in the order they matter: what to do, what the app has
+ * measured about you, and what you are currently testing. Each intervention is a
+ * block rather than a row, because the lever is a sentence and a sentence in a table
+ * cell is a sentence nobody reads.
+ */
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v-s-2);
+  padding-block: var(--v-s-4);
+  border-bottom: 1px solid var(--v-line);
+}
+
+.item:first-child {
+  padding-top: 0;
+}
+
+.item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--v-s-3);
+}
+
+.name {
+  font-size: var(--v-t-h3);
+  font-weight: 500;
+  color: var(--v-text);
+}
+
+/* The points, which are the reason this line is where it is in the list. */
+.worth {
+  flex: 0 0 auto;
+  font-size: var(--v-t-sm);
+  color: var(--v-text-dim);
+  white-space: nowrap;
+}
+
+.lever {
+  margin: 0;
+  font-size: var(--v-t-body);
+  line-height: 1.5;
+  color: var(--v-text-dim);
+  text-wrap: pretty;
+}
+
+/* The finding that promoted this line. Marked as quoted evidence rather than as
+   more advice, because it is a claim about the past, not an instruction. */
+.evidence {
+  margin: 0;
+  padding-left: var(--v-s-3);
+  border-left: 2px solid var(--v-line-accent);
+  font-size: var(--v-t-sm);
+  line-height: 1.5;
+  color: var(--v-text-faint);
+  text-wrap: pretty;
+}
+
+.zones {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v-s-1);
+}
+
+.zone {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--v-s-3);
+  padding-block: var(--v-s-2);
+  font-size: var(--v-t-sm);
+}
+
+.zone + .zone {
+  border-top: 1px solid var(--v-line);
+}
+
+.zoneLabel {
+  color: var(--v-text);
+}
+
+.zoneBand {
+  color: var(--v-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The evidence line under a measured anchor. Small, always present: a personalised
+   constant without a sample size is indistinguishable from a made-up one. */
+.basis {
+  margin: var(--v-s-1) 0 0;
+  font-size: var(--v-t-sm);
+  color: var(--v-text-faint);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.caveat {
+  margin: 0;
+  font-size: var(--v-t-sm);
+  color: var(--v-text-faint);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+/* Two caveats in a row read as one run-on paragraph without this. */
+.caveat + .caveat {
+  margin-top: var(--v-s-3);
+}

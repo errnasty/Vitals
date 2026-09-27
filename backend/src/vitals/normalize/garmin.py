@@ -512,17 +512,24 @@ def respiration(bronze: Bronze) -> Normalized:
 # ── fitness ─────────────────────────────────────────────────────────────────────
 
 
-def _unwrap(payload: Any) -> Any:
-    """A single-record response that arrives wrapped in a list.
+def _records(payload: Any) -> list[Any]:
+    """Every record in a max-metrics response, however many it holds.
 
-    `get_max_metrics_range` returns `[{...}]` rather than `{...}`, and the record
-    inside carries no top-level date, so `split_dated` cannot split it and it lands in
-    bronze as the list it arrived as. Unwrapping here rather than at capture keeps
-    bronze verbatim, which is the whole point of bronze.
+    A range request comes back as a **list**, and its length is not one. Production
+    sent a list of fifteen — fifteen days of VO2max, each its own record with its own
+    date on a nested block. The first version of this handled only a single-element
+    list, which fixed the recent-day case and silently dropped every historical
+    record in the same shape: the log went from "8 of 8 produced nothing" to "1 of 8",
+    which looked like success and was one payload holding fifteen days of history.
+
+    `split_dated` cannot do this job instead: the records carry no top-level date, so
+    it has nothing to split on and stores the list whole. That is the right thing for
+    bronze — the bytes arrived that way — and it makes unpacking this normalizer's
+    problem.
     """
-    if isinstance(payload, list) and len(payload) == 1:
-        return payload[0]
-    return payload
+    if isinstance(payload, list):
+        return payload
+    return [payload]
 
 
 def _vo2max(container: Any) -> tuple[Any, Any]:
@@ -534,32 +541,38 @@ def _vo2max(container: Any) -> tuple[Any, Any]:
     return running_value, cycling_value
 
 
+def _vo2max_day(bronze: Bronze, record: Any) -> date | None:
+    """The day one record is about.
+
+    The date lives on the nested `generic` block rather than at the top level, which
+    is the other half of why this endpoint produced nothing for months. `bronze`'s own
+    date is preferred when it has one, but a range response that never split has none.
+    """
+    for block in (_first(record, "generic"), _first(record, "cycling"), record):
+        day = _day(_first(block, "calendarDate", "calendar_date", "date"))
+        if day is not None:
+            return day
+    return bronze.calendar_date
+
+
 @normalizer("max_metrics")
 def max_metrics(bronze: Bronze) -> Normalized:
-    """VO2max, which is half of the Fitness headline and the whole longevity anchor.
+    """VO2max: half of the Fitness headline and the whole longevity anchor.
 
-    Two things about the real response cost this normalizer its entire output for
-    months, and neither was visible from the library's signature. The response is a
-    **list of one**, not a record; and the date lives on the nested `generic` block
-    rather than at the top level. A fixture written from the shape the code expected
-    passed happily while production stored nothing at all, which is why the fixture
-    below is now the shape Garmin actually sends.
+    Two things about the real response cost this endpoint its entire output, and
+    neither was visible from the library's signature: the response is a list whose
+    length is however many days it covers, and each record's date is on a nested
+    block rather than at the top level. A fixture written from the shape the code
+    expected passed happily while production stored nothing at all.
     """
-    payload = _unwrap(bronze.payload)
-    running, cycling = _vo2max(payload)
-
-    # The date is on the nested block, so it has to be looked for there before the
-    # payload's own (absent) top level.
-    day = bronze.calendar_date
-    if day is None:
-        for block in (_first(payload, "generic"), _first(payload, "cycling"), payload):
-            day = _day(_first(block, "calendarDate", "calendar_date", "date"))
-            if day is not None:
-                break
-    if day is None:
-        return Normalized()
-
-    return Normalized(daily=_daily(day, {c.VO2MAX_RUNNING: running, c.VO2MAX_CYCLING: cycling}))
+    rows: list[DailyValue] = []
+    for record in _records(bronze.payload):
+        day = _vo2max_day(bronze, record)
+        if day is None:
+            continue
+        running, cycling = _vo2max(record)
+        rows.extend(_daily(day, {c.VO2MAX_RUNNING: running, c.VO2MAX_CYCLING: cycling}))
+    return Normalized(daily=rows)
 
 
 @normalizer("training_status", priority=5)

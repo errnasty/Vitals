@@ -17,10 +17,19 @@ from vitals.db.models.credential import (
     Credential,
 )
 from vitals.db.models.derived import DerivedDaily
+from vitals.db.models.experiment import (
+    ABANDONED,
+    ANSWERED,
+    INCONCLUSIVE,
+    PROPOSED,
+    RUNNING,
+    Experiment,
+)
 from vitals.db.models.insight import Insight
 from vitals.db.models.metric import MetricDaily, MetricSample
 from vitals.db.models.raw_file import RawFile
 from vitals.db.models.raw_payload import RawPayload
+from vitals.db.models.response_profile import ResponseTrait
 from vitals.db.models.score import ScoreContribution, ScorePillar, VitalsScore
 from vitals.db.models.sleep import SleepSession
 from vitals.db.models.source_connection import SourceConnection
@@ -33,6 +42,11 @@ __all__ = [
     "GARMIN_TOKENS",
     "SOURCE_MODEL",
     "SOURCE_PYTHON",
+    "ABANDONED",
+    "ANSWERED",
+    "INCONCLUSIVE",
+    "PROPOSED",
+    "RUNNING",
     "Activity",
     "ActivityDetail",
     "AppUser",
@@ -42,10 +56,12 @@ __all__ = [
     "DayContext",
     "DayNote",
     "DerivedDaily",
+    "Experiment",
     "Insight",
     "MetricDaily",
     "MetricSample",
     "RawFile",
+    "ResponseTrait",
     "RawPayload",
     "ScoreContribution",
     "ScorePillar",

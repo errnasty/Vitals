@@ -192,3 +192,83 @@ differ.
 
 The same page shows the raw night — time asleep, deep, REM, awake — because a score
 nobody can check against a measurement is a score nobody should trust.
+
+## Phase 8: what can honestly be personalised
+
+Phase 5 wrote that its weights were "a starting calibration, not a finding", and that
+phase 8 would fit them to the individual. Having got here, that promise was wrong and
+it is not kept.
+
+### Pillar weights are not fitted, and cannot be
+
+Fitting requires an outcome to fit against, and the Vitals Score has none — it *is*
+the weighted sum, so regressing it on its own components recovers the weights that
+were put in. The only real outcome would be something like how well someone felt or
+performed, which this app does not measure and could not measure without asking every
+day. Four free parameters against a few hundred autocorrelated days of one person
+would fit noise beautifully and generalise to nothing. Shipping per-user weights on
+that basis would look far more personalised and be strictly less true.
+
+### What evidence can support: anchors and ranking
+
+**Anchors** are the constants the scoring curves compare against — a maximum heart
+rate, a nightly sleep need. They are *measured*, not fitted: the number is either in
+the data or it is not, and when it is not there is no trait rather than a guess
+dressed up. Nothing falls back to a population default, because a population default
+wearing a personalised label would look like evidence and be a guess, and the curves
+would treat it exactly as if it were real.
+
+This is where the heart-rate zones phase 3b refused to invent finally come from.
+"Your observed maximum across 412 recorded activities" is an anchor; "220 minus your
+age" is a number that looks precise and is not.
+
+Every trait carries its observation count and a sentence naming what it came from,
+because a personalised constant without a sample size is indistinguishable from a
+made-up one. Traits are replaced wholesale on each fit: one that loses its evidence
+disappears rather than lingering at last year's value.
+
+### Ranking: which advice comes first
+
+Every coaching app ranks advice, and most rank it by how bad the number looks — which
+reliably puts the same line on top every day. This ranks by **headroom**: the points
+of the final score that are actually available, already accounting for weight and
+coverage.
+
+Three factors multiply, and each vetoes a different kind of bad advice:
+
+| Factor | What it vetoes |
+|---|---|
+| Headroom | A line with nothing left to gain, however ugly its number |
+| Movability | A line you cannot act on — `observed` contributions have no lever |
+| Responsiveness | Advice this person's own days say does not work for them |
+
+Movability is the one worth dwelling on. "Get your overnight HRV to +0.5 SD" is not
+advice; it is a target someone will chase by sleeping badly and worrying about it.
+Responsiveness comes from the correlation engine, and only from findings that survived
+its correction — one that did not is not weaker evidence, it is the engine saying it
+could not tell, and letting it tip a ranking would smuggle back exactly the false
+positives the correction removed.
+
+### N-of-1 experiments
+
+The correlation engine is observational and permanently limited by that: you drink on
+Fridays, you sleep badly on Fridays, and nothing in the record can separate the two.
+The only way past it is to decide in advance what will change.
+
+An experiment writes down the tag, the metric and the hypothesis **before** the days
+happen, opens a window, and runs exactly one pre-declared test when it closes. That
+last point is why an experiment can reach a conclusion on a sample the engine would
+refuse: the engine runs a few hundred tests and must divide by all of them; an
+experiment runs one.
+
+Only one runs at a time. Two changes at once and neither answer means anything, which
+is the entire reason for running an experiment rather than reading a correlation.
+
+Two refusals keep it honest. A window where fewer than half the days were logged
+reports *that*, not a null result — otherwise the app launders someone forgetting into
+a finding about their body. And a window where one arm never filled is refused rather
+than answered from the half that has data.
+
+The null result gets the longer sentence deliberately. "Nothing found" is the most
+likely outcome of any honest experiment, and left as two words it reads like a failure
+rather than the information it is.

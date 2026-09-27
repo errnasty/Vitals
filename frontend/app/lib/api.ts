@@ -225,6 +225,56 @@ export type Insights = {
   empty_reason: string | null;
 };
 
+export type InterventionView = {
+  pillar: string;
+  pillar_label: string;
+  metric: string;
+  label: string;
+  /** "worth up to 6 points" — already rounded, already worded. */
+  worth: string;
+  worth_points: number;
+  lever: string;
+  /** The finding from your own days that promoted this line, word for word. */
+  evidence: string | null;
+};
+
+export type ZoneView = { label: string; lower: string; upper: string; band: string };
+
+export type TraitView = {
+  trait: string;
+  label: string;
+  value: string;
+  observations: number;
+  basis: string;
+};
+
+export type ProfileView = {
+  traits: TraitView[];
+  zones: ZoneView[];
+  missing: Record<string, string>;
+};
+
+export type ExperimentView = {
+  id: string;
+  tag: string;
+  tag_label: string;
+  metric: string;
+  hypothesis: string;
+  status: string;
+  started_on: string | null;
+  ends_on: string | null;
+  days_left: number | null;
+  conclusion: string | null;
+  sample: string | null;
+};
+
+export type Coach = {
+  interventions: InterventionView[];
+  profile: ProfileView;
+  experiment: ExperimentView | null;
+  caveat: string;
+};
+
 /** Either the payload, or a sentence a person can act on. */
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -341,3 +391,6 @@ export const fetchExplain = (day?: string) =>
   get<Explain>(`/score/explain${day ? `?day=${day}` : ""}`);
 export const fetchTrends = (days = 90) => get<Trends>(`/trends?days=${days}`);
 export const fetchInsights = () => get<Insights>("/insights");
+export const fetchCoach = () => get<Coach>("/coach");
+export const startExperiment = (tag: string, metric: string, lag = 1) =>
+  post<ExperimentView>("/coach/experiment", { tag, metric, lag });

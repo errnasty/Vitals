@@ -344,6 +344,33 @@ def test_max_metrics_splits_running_from_cycling_vo2max() -> None:
     assert values[c.VO2MAX_CYCLING] == 48.1
 
 
+def test_max_metrics_reads_every_record_not_only_the_first() -> None:
+    """The bug the production logs caught after the first fix looked like success.
+
+    A range request returns one record per day it covers — production sent fifteen.
+    Handling only a single-element list moved the barren count from 8-of-8 to 1-of-8,
+    which reads like a fix and was one payload quietly dropping fifteen days of
+    history.
+    """
+    payload = [
+        {
+            "userId": 1234,
+            "generic": {"calendarDate": f"2026-08-{day:02d}", "vo2MaxPreciseValue": 50.0 + day},
+            "cycling": None,
+        }
+        for day in range(10, 25)
+    ]
+
+    normalized = NORMALIZERS["max_metrics"].fn(
+        Bronze(endpoint="max_metrics", payload=payload, calendar_date=None)
+    )
+
+    running = [row for row in normalized.daily if row.metric == c.VO2MAX_RUNNING]
+    assert len(running) == 15
+    assert {row.calendar_date for row in running} == {date(2026, 8, d) for d in range(10, 25)}
+    assert max(row.value for row in running) == 74.0
+
+
 def test_max_metrics_dates_itself_when_the_range_response_could_not_be_split() -> None:
     """The case that silently emptied the Fitness card.
 

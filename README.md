@@ -34,7 +34,7 @@ phase 3.
 | 5 | Vitals Score: pillars, coverage, calibration, contributions waterfall | **code complete** |
 | 6 | Next.js dashboard: Today, Breakdown, Trends | **code complete** |
 | 7 | AI: digest, OpenRouter, grounding validator, quiet daily brief | **code complete** |
-| 8 | AI coach: response profile, ranked interventions, N-of-1 experiments | |
+| 8 | AI coach: response profile, ranked interventions, N-of-1 experiments | **code complete** |
 | 9 | Agentic Q&A, pgvector similar-days, journal fusion | |
 | 10 | Apple Health push ingest | |
 | 11 | Meal logging by photo | |

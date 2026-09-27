@@ -34,7 +34,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function InsightsPage() {
   const result = await fetchInsights();
-  const nav = <BottomNav items={navFor("insights")} />;
+  const nav = <BottomNav items={navFor("coach")} />;
 
   if (!result.ok) {
     return (

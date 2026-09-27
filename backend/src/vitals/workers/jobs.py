@@ -17,12 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from vitals.ai.brief import generate as write_brief
 from vitals.analytics import recompute as recompute_gold
+from vitals.coach.experiments import evaluate as evaluate_experiment
 from vitals.db.session import dispose_engine, get_sessionmaker
 from vitals.ingest.pipeline import NoSuchUser, resolve_user, run_backfill, run_incremental
 from vitals.insights.engine import refresh as refresh_insights
 from vitals.logging import get_logger
 from vitals.normalize import normalize as normalize_silver
 from vitals.normalize.recordings import rebuild as rebuild_recordings
+from vitals.profile.fit import refresh as fit_profile
 from vitals.score import score as score_day
 from vitals.sources.base import SyncOutcome
 
@@ -185,6 +187,28 @@ async def _refresh_derived(
         tagged_days=found.tagged_days,
         skipped=found.skipped,
     )
+
+    try:
+        # Re-measured every sync rather than once: a maximum heart rate can only go
+        # up, and a resting floor moves with fitness. Both are cheap — four queries
+        # and some sorting — and a stale anchor silently skews every zone it defines.
+        anchors = await fit_profile(session, user_id=user.id)
+    except Exception as exc:  # noqa: BLE001 - reported, never fatal to the sync
+        log.error("sync.profile_failed", error=f"{type(exc).__name__}: {exc}")
+    else:
+        log.info("sync.profile_fitted", fitted=anchors.fitted, skipped=anchors.skipped)
+
+    try:
+        # Closes an N-of-1 the day after its window ends. Doing it here rather than
+        # on a screen load means the verdict exists whether or not anyone opens the
+        # app, which matters for a question whose whole value is that it was asked
+        # before the days happened.
+        answered = await evaluate_experiment(session, user_id=user.id)
+    except Exception as exc:  # noqa: BLE001 - reported, never fatal to the sync
+        log.error("sync.experiment_failed", error=f"{type(exc).__name__}: {exc}")
+    else:
+        if answered is not None:
+            log.info("sync.experiment_evaluated", status=answered.status)
 
 
 async def run_history(*, start: date, end: date, email: str | None = None) -> SyncOutcome:

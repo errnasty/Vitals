@@ -10,7 +10,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from vitals import __version__
-from vitals.api.routers import auth, context, dashboard, detail, garmin, health, insights
+from vitals.api.routers import (
+    auth,
+    coach,
+    context,
+    dashboard,
+    detail,
+    garmin,
+    health,
+    insights,
+)
 from vitals.auth.errors import AuthError
 from vitals.auth.policy import assert_auth_ready
 from vitals.config import get_settings
@@ -89,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(detail.router)
     app.include_router(garmin.router)
     app.include_router(insights.router)
+    app.include_router(coach.router)
     return app
 
 

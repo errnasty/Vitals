@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from vitals import __version__
 from vitals.api.routers import (
+    ask,
     auth,
     coach,
     context,
@@ -99,6 +100,7 @@ def create_app() -> FastAPI:
     app.include_router(garmin.router)
     app.include_router(insights.router)
     app.include_router(coach.router)
+    app.include_router(ask.router)
     return app
 
 

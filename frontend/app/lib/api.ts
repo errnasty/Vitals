@@ -275,6 +275,22 @@ export type Coach = {
   caveat: string;
 };
 
+export type AnswerView = {
+  text: string;
+  /** "model" or "python" — never hidden, because the two differ in how much they
+      can be trusted and a screen that conflates them is worse than either. */
+  source: string;
+  written_by_model: boolean;
+  day: string | null;
+  used: string[];
+  note: string | null;
+};
+
+export type AskSettings = {
+  share_notes_with_ai: boolean;
+  explanation: string;
+};
+
 /** Either the payload, or a sentence a person can act on. */
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -392,5 +408,9 @@ export const fetchExplain = (day?: string) =>
 export const fetchTrends = (days = 90) => get<Trends>(`/trends?days=${days}`);
 export const fetchInsights = () => get<Insights>("/insights");
 export const fetchCoach = () => get<Coach>("/coach");
+export const fetchAskSettings = () => get<AskSettings>("/ask/settings");
+export const putAskSettings = (share: boolean) =>
+  put<AskSettings>("/ask/settings", { share_notes_with_ai: share });
+export const postQuestion = (question: string) => post<AnswerView>("/ask", { question });
 export const startExperiment = (tag: string, metric: string, lag = 1) =>
   post<ExperimentView>("/coach/experiment", { tag, metric, lag });

@@ -1,0 +1,81 @@
+/*
+ * Ask.
+ *
+ * One field, one answer. The answer is the page; everything else gets out of its way.
+ */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v-s-3);
+}
+
+.answer {
+  margin: 0;
+  font-size: var(--v-t-h3);
+  line-height: 1.5;
+  color: var(--v-text);
+  text-wrap: pretty;
+}
+
+/* The Python-composed answer is a block of facts rather than prose, so it keeps its
+   line breaks instead of being reflowed into a paragraph that reads as gibberish. */
+.facts {
+  margin: 0;
+  font-family: var(--v-font-mono);
+  font-size: var(--v-t-sm);
+  line-height: 1.6;
+  color: var(--v-text-dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Where the answer came from. Small, always shown: an answer composed in Python
+   because the model could not be trusted must not look identical to one the model
+   wrote. */
+.provenance {
+  margin: 0;
+  font-size: var(--v-t-sm);
+  color: var(--v-text-faint);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--v-s-2);
+}
+
+.example {
+  padding: var(--v-s-2) var(--v-s-3);
+  border: 1px solid var(--v-line-strong);
+  border-radius: var(--v-r-pill, 999px);
+  background: none;
+  color: var(--v-text-dim);
+  font: inherit;
+  font-size: var(--v-t-sm);
+  cursor: pointer;
+  transition: background-color var(--v-dur) var(--v-ease);
+}
+
+.example:hover {
+  background: var(--v-surface-2);
+}
+
+.setting {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--v-s-3);
+  padding-block: var(--v-s-2);
+  cursor: pointer;
+}
+
+.check {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  accent-color: var(--v-accent);
+  cursor: pointer;
+}

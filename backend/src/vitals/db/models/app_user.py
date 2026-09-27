@@ -16,7 +16,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, Uuid, func, true
+from sqlalchemy import Boolean, DateTime, String, Uuid, false, func, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from vitals.db.base import Base
@@ -37,6 +37,18 @@ class AppUser(Base):
     # A local kill switch that does not depend on reaching Supabase.
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=true()
+    )
+    # Whether a day's free-text note may be given to the model when answering a
+    # question. **Off by default, and it must stay that way.**
+    #
+    # Phase 3's Log screen promised, in as many words, that the note is "never
+    # analysed and never shown to a model". Phase 9 wants to use it. A promise made
+    # on the screen where someone typed the text is not one a later phase gets to
+    # quietly withdraw, so this is opt-in, the default preserves exactly what was
+    # promised, and the screen's wording changes with the setting rather than
+    # staying reassuring while the behaviour moves underneath it.
+    share_notes_with_ai: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
     )
 
     created_at: Mapped[datetime] = mapped_column(

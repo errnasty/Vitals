@@ -79,10 +79,19 @@ the initial migration enables the extension only when the server actually has it
 "pgvector": {"ok": true, "present": false, "version": null, "required": false}
 ```
 
-When phase 9 lands, either move to a pgvector-capable image (and take over backups with
-`pg_dump`, since PITR needs the official image) or keep vectors out of Postgres. Set
-`VITALS_REQUIRE_PGVECTOR=true` at that point and the same absence becomes a hard
-failure, in the migration and in the healthcheck.
+**Phase 9 landed and the answer is: keep vectors out of Postgres.** The extension was
+never needed, because similar-day search is not a vector-search problem. A day is a
+dozen numbers and a lifetime of them is a few thousand rows; exact nearest-neighbour
+over 3,000 days by 12 features is about 36,000 multiplications, which is under a
+millisecond in plain Python with no index. pgvector earns its keep on millions of
+1,536-dimensional embeddings, where exact search is infeasible and an approximate
+index is the only option — here an approximate index would take longer to build than
+the exact answer takes to compute, and would return approximately the right days.
+
+So the official image stays, the managed backups and PITR stay, and
+`VITALS_REQUIRE_PGVECTOR` stays false. Nothing in the app creates a vector column.
+Revisit only if embeddings of free text ever become a feature; numbers will not need
+it.
 
 **Turn on backups now, while the database is empty and it costs nothing.** Backups tab →
 enable scheduled volume backups, and PITR if you want a four-week restore window. This
@@ -282,7 +291,8 @@ pg_restore --no-owner --no-acl --clean --if-exists \
 ```
 
 If the dump contains a `vector` column or a `CREATE EXTENSION vector`, the restore will
-fail on Railway's image; nothing before phase 9 creates one. Afterwards:
+fail on Railway's image. Nothing in this app creates one — see the phase 9 note under
+Postgres above. Afterwards:
 
 ```bash
 DATABASE_URL=<railway public URL> vitals doctor    # migrations at head, row counts sane

@@ -11,7 +11,7 @@ import {
 } from "@/design";
 import { Notice } from "@/app/components/Notice";
 import { saveDay } from "@/app/log/actions";
-import { fetchContext } from "@/app/lib/api";
+import { fetchAskSettings, fetchContext } from "@/app/lib/api";
 import { longDate } from "@/app/lib/display";
 import { navFor } from "@/app/lib/nav";
 import prose from "@/app/components/Prose.module.css";
@@ -36,7 +36,8 @@ type Search = Promise<{ day?: string }>;
  */
 export default async function LogPage({ searchParams }: { searchParams: Search }) {
   const { day } = await searchParams;
-  const result = await fetchContext(day);
+  const [result, settings] = await Promise.all([fetchContext(day), fetchAskSettings()]);
+  const sharing = settings.ok && settings.data.share_notes_with_ai;
   const nav = <BottomNav items={navFor("log")} />;
 
   if (!result.ok) {
@@ -113,8 +114,17 @@ export default async function LogPage({ searchParams }: { searchParams: Search }
             <Card>
               <CardHeader title="Anything else" icon="share" />
               <p className={prose.note}>
-                For you, not for the app. This is never analysed and never shown to a
-                model.
+                For you, not for the app. This is never analysed, never correlated
+                and never scored.
+              </p>
+              {/* The wording moves with the setting rather than staying reassuring
+                  while the behaviour changes underneath it. Phase 9 made this text
+                  conditional; leaving the original sentence in place would have made
+                  it a lie for anyone who turned sharing on. */}
+              <p className={prose.note}>
+                {sharing
+                  ? "You have allowed answers on the Ask screen to read these notes. Nothing else reads them."
+                  : "It is never shown to a model. You can change that on the Ask screen."}
               </p>
               <textarea
                 name="note"

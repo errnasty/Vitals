@@ -35,7 +35,7 @@ phase 3.
 | 6 | Next.js dashboard: Today, Breakdown, Trends | **code complete** |
 | 7 | AI: digest, OpenRouter, grounding validator, quiet daily brief | **code complete** |
 | 8 | AI coach: response profile, ranked interventions, N-of-1 experiments | **code complete** |
-| 9 | Agentic Q&A, pgvector similar-days, journal fusion | |
+| 9 | Agentic Q&A, similar-days (no pgvector needed), journal fusion | **code complete** |
 | 10 | Apple Health push ingest | |
 | 11 | Meal logging by photo | |
 | 12 | Multi-user: per-user vault, RLS, rate budgets | |

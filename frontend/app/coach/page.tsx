@@ -143,6 +143,7 @@ export default async function CoachPage() {
               tested to find it.
             </p>
             <ListRow label="Patterns" href="/insights" />
+            <ListRow label="Ask about your data" href="/ask" />
           </Card>
 
           <Card>

@@ -154,3 +154,69 @@ row reading `source='python', attempts=2` is the system working.
 - **The default model slug is a guess at your catalogue.** If OpenRouter does not know
   it you get a `Refused` with its own message, the brief falls back to Python, and
   `vitals brief` prints why.
+
+## Phase 9: asking a question
+
+The daily brief writes from a fixed digest. A question is not fixed, so something has
+to decide what facts to load — and that something is Python, reading the question's
+words, not a model choosing its own retrieval.
+
+### Why not a tool-calling loop
+
+A model that chooses what to fetch can choose to fetch nothing and answer from memory.
+On health data that is *the* failure: the answer looks identical, sounds more fluent,
+and is about nobody. Routing in Python means what was loaded is knowable, testable,
+and is simultaneously the context the model is given **and** the set of numbers it is
+permitted to state.
+
+The routing is keyword matching, deliberately. It is legible, it costs nothing, and
+when it is wrong the answer carries a few extra facts rather than a wrong one. When
+nothing matches, the day's own score is included, which is what most questions turn
+out to need.
+
+### The same guarantee as the brief
+
+Generate → check every number against the pack → retry once naming the fault → fall
+back to Python. `ai/grounding.py` is reused unchanged. The fallback is not a degraded
+mode here: for most questions the facts themselves *are* the answer, just without
+prose around them, and the screen says which of the two you are reading. An answer
+composed in Python because the model invented a number must not look identical to one
+the model wrote and passed.
+
+Staleness goes into the pack as a fact. An answer written confidently about "today"
+from a week-old sync is the single most misleading thing this feature could produce.
+
+### Similar days, without pgvector
+
+See `analytics/similar.py`. The short version: exact nearest-neighbour over a few
+thousand days by a dozen standardised features is under a millisecond, so the
+extension — and the loss of Railway's managed backups that adopting it would have
+cost — was never necessary.
+
+Two details that decide whether the answer is meaningful. Features are divided by
+their own spread, because resting heart rate moves over a range of ten and steps move
+over a range of ten thousand, and unscaled distance is a step-count search with
+rounding noise attached. And days within three days of the target are excluded:
+yesterday resembles today because it *is* nearly today, and a list of the four days
+either side is a true answer that tells you nothing.
+
+### Journal fusion, and a promise that was already made
+
+Phase 3's Log screen told the person, on the screen where they typed the text, that
+their note is "never analysed and never shown to a model". Phase 9 wanted to show it
+to one.
+
+A promise made where the data was entered is not one a later phase gets to withdraw
+quietly. So:
+
+* `app_user.share_notes_with_ai` is **off by default**, and off means the original
+  promise is exactly what happens — not a word reaches the model.
+* The Log screen's wording is conditional on the setting. It changes with the
+  behaviour rather than staying reassuring while the behaviour moves underneath it.
+* The note is still never *analysed*. Nothing is derived from it, nothing is
+  correlated against it, and it never reaches silver, gold or the score. Free text
+  cannot be correlated — that is why the tag vocabulary is closed — so the only honest
+  use for a note is as something a model may read while answering, which is precisely
+  what the setting grants and nothing more.
+* When shared, it reaches back a fortnight. Far enough for "last week", short enough
+  that a question about today does not hand over a year of someone's diary.

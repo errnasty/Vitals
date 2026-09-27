@@ -61,12 +61,23 @@ class DayContext(Base):
 
 
 class DayNote(Base):
-    """Free text, for the human. Never parsed, never correlated, never shown to a model.
+    """Free text, for the human. Never parsed and never correlated.
 
     It exists because a closed vocabulary cannot hold everything and a day sometimes
     needs a sentence. Keeping it out of the analysis is deliberate: text that looks
     like data invites an app to guess at it, and a guess about someone's health is
     worse than an admission that this field is just for them.
+
+    **On being shown to a model.** This used to say "never shown to a model", and
+    phase 9 wanted to show it to one. Rather than quietly withdraw a promise made on
+    the screen where the text was typed, the note reaches a model only when
+    `app_user.share_notes_with_ai` is on, which it is not by default — so the
+    original promise remains the behaviour unless someone changes it themselves, and
+    the Log screen's wording changes with the setting rather than staying reassuring
+    while the behaviour moves underneath it.
+
+    It is still never *analysed*: nothing is derived from it, nothing is correlated
+    against it, and it never reaches silver, gold or the score.
     """
 
     __tablename__ = "day_note"

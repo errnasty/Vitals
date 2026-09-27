@@ -401,3 +401,203 @@ def test_a_payload_with_no_date_yields_nothing() -> None:
         Bronze(endpoint="rhr_daily", payload={"value": 48}, calendar_date=None)
     )
     assert normalized.daily == []
+
+
+# ── the envelope endpoints ──────────────────────────────────────────────────────
+#
+# Every fixture below is the shape the production logs reported, not a shape invented
+# to match the code. That distinction is the whole reason these were broken: the old
+# fixtures were written from what the normalizers expected, so they passed while
+# production stored nothing for months.
+
+
+def test_hill_score_reads_the_days_inside_the_envelope() -> None:
+    """`barren=15 seen=15`. `overallScore` is on each record, not on the envelope."""
+    payload = {
+        "startDate": "2026-08-01",
+        "endDate": "2026-08-03",
+        "userProfilePK": 1234,
+        "maxScore": 71,
+        "periodAvgScore": {"lastSevenDaysAvgScore": 64},
+        "hillScoreDTOList": [
+            {"calendarDate": "2026-08-01", "overallScore": 61},
+            {"calendarDate": "2026-08-02", "overallScore": 66},
+            {"calendarDate": "2026-08-03", "overallScore": 71},
+        ],
+    }
+
+    normalized = NORMALIZERS["hill_score"].fn(
+        Bronze(endpoint="hill_score", payload=payload, calendar_date=None)
+    )
+
+    assert len(normalized.daily) == 3
+    assert {row.value for row in normalized.daily} == {61.0, 66.0, 71.0}
+    assert {row.calendar_date for row in normalized.daily} == {
+        date(2026, 8, 1),
+        date(2026, 8, 2),
+        date(2026, 8, 3),
+    }
+
+
+def test_endurance_score_never_files_the_period_average_under_a_day() -> None:
+    """The envelope's `avg` is the average across the whole range.
+
+    Storing that under each day would have been worse than storing nothing, because
+    it would have looked right.
+    """
+    payload = {
+        "avg": 5000,
+        "max": 7400,
+        "startDate": "2026-08-01",
+        "endDate": "2026-08-02",
+        "userProfilePK": 1234,
+        "enduranceScoreDTO": [
+            {"calendarDate": "2026-08-01", "overallScore": 7100},
+            {"calendarDate": "2026-08-02", "overallScore": 7400},
+        ],
+    }
+
+    normalized = NORMALIZERS["endurance_score"].fn(
+        Bronze(endpoint="endurance_score", payload=payload, calendar_date=None)
+    )
+
+    values = {row.value for row in normalized.daily}
+    assert values == {7100.0, 7400.0}
+    assert 5000.0 not in values
+
+
+def test_endurance_score_handles_the_group_map_shape() -> None:
+    payload = {
+        "startDate": "2026-08-01",
+        "endDate": "2026-08-02",
+        "groupMap": {
+            "2026-08": [
+                {"calendarDate": "2026-08-01", "overallScore": 7100},
+                {"calendarDate": "2026-08-02", "overallScore": 7400},
+            ]
+        },
+    }
+
+    normalized = NORMALIZERS["endurance_score"].fn(
+        Bronze(endpoint="endurance_score", payload=payload, calendar_date=None)
+    )
+
+    assert len(normalized.daily) == 2
+
+
+def test_body_composition_reads_every_weigh_in_not_the_window_average() -> None:
+    """`barren=13 seen=16`. `totalAverage` is a real number and the wrong one."""
+    payload = {
+        "startDate": "2026-08-01",
+        "endDate": "2026-08-03",
+        "totalAverage": {"weight": 99000.0, "bmi": 30.0},
+        "dateWeightList": [
+            {"calendarDate": "2026-08-01", "weight": 74100.0, "bodyFat": 18.2, "bmi": 22.6},
+            {"calendarDate": "2026-08-03", "weight": 73800.0, "bodyFat": 18.0, "bmi": 22.5},
+        ],
+    }
+
+    normalized = NORMALIZERS["body_composition"].fn(
+        Bronze(endpoint="body_composition", payload=payload, calendar_date=None)
+    )
+
+    weights = {row.calendar_date: row.value for row in normalized.daily if row.metric == c.WEIGHT}
+    assert weights == {date(2026, 8, 1): 74.1, date(2026, 8, 3): 73.8}
+    # 99 kg is the window average, and it belongs to no day.
+    assert 99.0 not in weights.values()
+
+
+def test_a_single_day_body_composition_still_works() -> None:
+    """The same endpoint puts the fields at the top level for one day."""
+    normalized = NORMALIZERS["body_composition"].fn(
+        Bronze(
+            endpoint="body_composition",
+            payload={"calendarDate": "2026-08-21", "weight": 74100.0, "bmi": 22.6},
+            calendar_date=date(2026, 8, 21),
+        )
+    )
+
+    values = _values(normalized)
+    assert values[c.WEIGHT] == 74.1
+
+
+# ── sleep ───────────────────────────────────────────────────────────────────────
+
+
+def test_the_range_endpoint_s_flat_sleep_score_is_read() -> None:
+    """`barren=60 seen=60`. The per-day endpoint nests the score under
+    `sleepScores.overall.value`; the range endpoint sends a flat `sleepScore`, so
+    every historical night came through with nothing at all."""
+    payload = {
+        "calendarDate": "2026-08-21",
+        "values": {
+            "sleepScore": 80,
+            "deepTime": 5400,
+            "lightTime": 14400,
+            "remTime": 5400,
+            "awakeTime": 900,
+        },
+    }
+
+    normalized = NORMALIZERS["sleep_daily"].fn(
+        Bronze(endpoint="sleep_daily", payload=payload, calendar_date=None)
+    )
+
+    values = _values(normalized)
+    assert values[c.SLEEP_SCORE] == 80
+    # No total was sent, so the stages are the night. Awake time is not sleep.
+    assert values[c.SLEEP_DURATION] == 25200
+    assert values[c.SLEEP_DEEP] == 5400
+
+
+def test_a_night_sent_in_milliseconds_is_the_same_night() -> None:
+    """The two sleep endpoints disagree about units, and no real night is ambiguous:
+    28,800,000 seconds is 333 days and 28.8 seconds is not a night."""
+    payload = {
+        "calendarDate": "2026-08-21",
+        "values": {"sleepScore": 74, "totalSleepTime": 27000000, "deepTime": 5400000},
+    }
+
+    normalized = NORMALIZERS["sleep_daily"].fn(
+        Bronze(endpoint="sleep_daily", payload=payload, calendar_date=None)
+    )
+
+    values = _values(normalized)
+    assert values[c.SLEEP_DURATION] == 27000
+    assert values[c.SLEEP_DEEP] == 5400
+
+
+def test_a_duration_implausible_in_either_unit_is_refused() -> None:
+    """A wrong duration is worse than a missing one: the missing one lowers coverage
+    and says so, the wrong one silently moves the sleep pillar."""
+    payload = {"calendarDate": "2026-08-21", "values": {"sleepScore": 70, "totalSleepTime": 12}}
+
+    normalized = NORMALIZERS["sleep_daily"].fn(
+        Bronze(endpoint="sleep_daily", payload=payload, calendar_date=None)
+    )
+
+    values = _values(normalized)
+    assert c.SLEEP_DURATION not in values
+    # The score is still good — one unusable field does not discard the night.
+    assert values[c.SLEEP_SCORE] == 70
+
+
+def test_a_reported_total_is_never_overruled_by_the_stage_sum() -> None:
+    """A derived total that disagreed with a reported one is a second opinion nobody
+    asked for."""
+    payload = {
+        "calendarDate": "2026-08-21",
+        "values": {
+            "sleepScore": 80,
+            "totalSleepTime": 26000,
+            "deepTime": 5400,
+            "lightTime": 14400,
+            "remTime": 5400,
+        },
+    }
+
+    normalized = NORMALIZERS["sleep_daily"].fn(
+        Bronze(endpoint="sleep_daily", payload=payload, calendar_date=None)
+    )
+
+    assert _values(normalized)[c.SLEEP_DURATION] == 26000

@@ -267,25 +267,82 @@ def daily_steps(bronze: Bronze) -> Normalized:
 # ── sleep ───────────────────────────────────────────────────────────────────────
 
 
+# A night, in seconds. Below the floor it is a nap the watch mislabelled or a unit
+# error; above the ceiling it is certainly a unit error. Used to *detect* the unit,
+# never to coerce a number into range.
+SLEEP_FLOOR_S = 30 * 60
+SLEEP_CEILING_S = 20 * 3600
+
+
+def _seconds(value: Any) -> int | None:
+    """A sleep duration in seconds, whichever unit Garmin sent it in.
+
+    The range endpoint and the per-day endpoint disagree about units on these fields,
+    and the field names differ too, so a value that arrives as 28,800,000 is the same
+    night as one that arrives as 28,800. Guessing from the field name would be
+    guessing; this decides from magnitude, which for sleep is unambiguous — no real
+    night is 28,800,000 seconds and none is 28.8.
+
+    A value that is implausible in *both* readings is rejected rather than stored.
+    A wrong duration is worse than a missing one: the missing one lowers coverage and
+    says so, and the wrong one silently moves the sleep pillar.
+    """
+    number = _num(value)
+    if number is None or number <= 0:
+        return None
+    if SLEEP_FLOOR_S <= number <= SLEEP_CEILING_S:
+        return int(number)
+    milliseconds = number / 1000
+    if SLEEP_FLOOR_S <= milliseconds <= SLEEP_CEILING_S:
+        return int(milliseconds)
+    return None
+
+
 def _sleep_from(payload: dict[str, Any], day: date) -> SleepRecord:
+    # Two shapes, both real. The per-day endpoint nests the score under
+    # `sleepScores.overall.value`; the range endpoint carries a flat `sleepScore`,
+    # which is why every historical night came through scoreless.
     scores = _first(payload, "sleepScores") or {}
     overall = scores.get("overall") if isinstance(scores, dict) else None
     score = _int(overall.get("value")) if isinstance(overall, dict) else None
+    if score is None:
+        score = _int(_first(payload, "sleepScore", "overallSleepScore"))
+
+    deep = _seconds(_first(payload, "deepSleepSeconds", "deepTime"))
+    light = _seconds(_first(payload, "lightSleepSeconds", "lightTime"))
+    rem = _seconds(_first(payload, "remSleepSeconds", "remTime"))
+    awake = _seconds(_first(payload, "awakeSleepSeconds", "awakeSeconds", "awakeTime"))
+
+    duration = _seconds(
+        _first(
+            payload,
+            "sleepTimeSeconds",
+            "totalSleepSeconds",
+            "totalSleepTime",
+            "sleepTime",
+            "sleepTimeInSeconds",
+        )
+    )
+    if duration is None and (deep or light or rem):
+        # The stages sum to the night. Only ever used when no total was sent — a
+        # derived total that disagreed with a reported one would be a second opinion
+        # nobody asked for.
+        duration = (deep or 0) + (light or 0) + (rem or 0)
 
     return SleepRecord(
         calendar_date=day,
         started_at=_utc(_first(payload, "sleepStartTimestampGMT")),
         ended_at=_utc(_first(payload, "sleepEndTimestampGMT")),
-        duration_s=_int(_first(payload, "sleepTimeSeconds", "totalSleepSeconds")),
-        deep_s=_int(_first(payload, "deepSleepSeconds")),
-        light_s=_int(_first(payload, "lightSleepSeconds")),
-        rem_s=_int(_first(payload, "remSleepSeconds")),
-        awake_s=_int(_first(payload, "awakeSleepSeconds", "awakeSeconds")),
-        nap_s=_int(_first(payload, "napTimeSeconds")),
+        duration_s=duration,
+        deep_s=deep,
+        light_s=light,
+        rem_s=rem,
+        awake_s=awake,
+        nap_s=_seconds(_first(payload, "napTimeSeconds", "napTime")),
         score=score,
         avg_hrv=_num(_first(payload, "avgSleepHRV", "avgHrv")),
-        avg_spo2=_num(_first(payload, "avgSpO2", "averageSpO2")),
-        avg_respiration=_num(_first(payload, "avgRespirationValue")),
+        avg_spo2=_num(_first(payload, "avgSpO2", "averageSpO2", "spO2")),
+        avg_respiration=_num(_first(payload, "avgRespirationValue", "respiration")),
     )
 
 
@@ -532,6 +589,69 @@ def _records(payload: Any) -> list[Any]:
     return [payload]
 
 
+def _flatten_buckets(container: dict[str, Any]) -> list[Any] | None:
+    """A dict whose every value is a list of records, flattened — or None."""
+    if not container or not all(isinstance(v, list) for v in container.values()):
+        return None
+    return [item for bucket in container.values() for item in bucket]
+
+
+def _nested_records(payload: Any, *keys: str) -> list[Any]:
+    """Per-day records out of a range response that wraps them.
+
+    Garmin's range endpoints do not return a list of days. They return a summary
+    envelope — `{startDate, endDate, periodAvgScore, hillScoreDTOList}` — with the
+    days inside one of its fields, under a name that differs per endpoint and ends in
+    DTO, DTOList or List about half the time.
+
+    `split_dated` cannot unwrap these: it splits a response only when *every* item
+    carries a date, and an envelope carries none at its top level. So it stores the
+    envelope whole, correctly, and unwrapping is the normalizer's job.
+
+    Reading the envelope's own top-level fields — which is what these normalizers used
+    to do — finds nothing, every time, for every day. `hill_score` and
+    `endurance_score` were barren on 15 of 15 payloads for exactly this reason, and
+    `body_composition` on 13 of 16.
+    """
+    if isinstance(payload, list):
+        return payload
+    if not isinstance(payload, dict):
+        return []
+
+    for key in keys:
+        found = payload.get(key)
+        if isinstance(found, list) and found:
+            return found
+        if isinstance(found, dict):
+            # A `groupMap`-style container: buckets keyed by month, each a list of
+            # days. Checked before treating the dict as one record, or the whole
+            # bucket map comes back as a single dateless "record".
+            flattened = _flatten_buckets(found)
+            if flattened is not None:
+                return flattened
+            # A single-day response uses the same field for one record rather than a
+            # list of one.
+            return [found]
+
+    for value in payload.values():
+        if isinstance(value, dict):
+            flattened = _flatten_buckets(value)
+            if flattened is not None:
+                return flattened
+
+    # No envelope field matched, so treat the payload as the record. This is the
+    # single-day shape of the same endpoints, where the fields sit at the top level
+    # rather than inside a list — and when it really is an envelope this costs
+    # nothing, because none of the field names a caller looks for are on it.
+    return [payload]
+
+
+def _record_day(bronze: Bronze, record: Any) -> date | None:
+    """The day one unwrapped record is about."""
+    day = _day(_first(record, "calendarDate", "calendar_date", "date", "startDate", "weighInDate"))
+    return day or bronze.calendar_date
+
+
 def _vo2max(container: Any) -> tuple[Any, Any]:
     """`(running, cycling)` VO2max out of whichever nesting this response uses."""
     generic = _first(container, "generic") or {}
@@ -596,20 +716,38 @@ def training_status(bronze: Bronze) -> Normalized:
 
 @normalizer("hill_score")
 def hill_score(bronze: Bronze) -> Normalized:
-    day = _resolve_day(bronze)
-    if day is None:
-        return Normalized()
-    value = _first(bronze.payload, "overallScore", "hillScore", "value")
-    return Normalized(daily=_daily(day, {c.HILL_SCORE: value}))
+    """One row per day inside the envelope, not one row for the envelope.
+
+    A range request returns `{startDate, endDate, periodAvgScore, hillScoreDTOList}`.
+    Reading `overallScore` off that envelope finds nothing — it is on each record in
+    the list — which is why this was barren on 15 of 15 payloads.
+    """
+    rows: list[DailyValue] = []
+    for record in _nested_records(bronze.payload, "hillScoreDTOList", "hillScoreDTO"):
+        day = _record_day(bronze, record)
+        if day is None:
+            continue
+        value = _first(record, "overallScore", "hillScore", "score", "value")
+        rows.extend(_daily(day, {c.HILL_SCORE: value}))
+    return Normalized(daily=rows)
 
 
 @normalizer("endurance_score")
 def endurance_score(bronze: Bronze) -> Normalized:
-    day = _resolve_day(bronze)
-    if day is None:
-        return Normalized()
-    value = _first(bronze.payload, "overallScore", "enduranceScore", "avg", "value")
-    return Normalized(daily=_daily(day, {c.ENDURANCE_SCORE: value}))
+    """Same envelope problem as `hill_score`, with a different field name.
+
+    `{avg, max, startDate, endDate, groupMap, enduranceScoreDTO}`. The envelope's own
+    `avg` is the *period* average across the whole range — storing that under each day
+    would have been worse than storing nothing, because it would have looked right.
+    """
+    rows: list[DailyValue] = []
+    for record in _nested_records(bronze.payload, "enduranceScoreDTO", "groupMap"):
+        day = _record_day(bronze, record)
+        if day is None:
+            continue
+        value = _first(record, "overallScore", "enduranceScore", "score", "value")
+        rows.extend(_daily(day, {c.ENDURANCE_SCORE: value}))
+    return Normalized(daily=rows)
 
 
 @normalizer("race_predictions")
@@ -644,24 +782,34 @@ def _kg(value: Any) -> float | None:
 
 @normalizer("body_composition")
 def body_composition(bronze: Bronze) -> Normalized:
-    payload = bronze.payload
-    day = _resolve_day(bronze, payload)
-    if day is None:
-        return Normalized()
+    """Every weigh-in in the range, not the range's own average.
 
-    return Normalized(
-        daily=_daily(
-            day,
-            {
-                c.WEIGHT: _kg(_first(payload, "weight")),
-                c.BONE_MASS: _kg(_first(payload, "boneMass")),
-                c.MUSCLE_MASS: _kg(_first(payload, "muscleMass")),
-                c.BODY_FAT_PCT: _first(payload, "bodyFat"),
-                c.BODY_WATER_PCT: _first(payload, "bodyWater"),
-                c.BMI: _first(payload, "bmi"),
-            },
+    `{startDate, endDate, totalAverage, dateWeightList}`. `totalAverage` is the mean
+    across the whole window — a real number, and the wrong one to file under a single
+    day. The weigh-ins are in `dateWeightList`, each with its own date.
+
+    A single-day response has the fields at the top level instead, which
+    `_nested_records` returns as a one-item list, so both shapes take the same path.
+    """
+    rows: list[DailyValue] = []
+    for record in _nested_records(bronze.payload, "dateWeightList", "dailyWeightSummaries"):
+        day = _record_day(bronze, record)
+        if day is None:
+            continue
+        rows.extend(
+            _daily(
+                day,
+                {
+                    c.WEIGHT: _kg(_first(record, "weight")),
+                    c.BONE_MASS: _kg(_first(record, "boneMass")),
+                    c.MUSCLE_MASS: _kg(_first(record, "muscleMass")),
+                    c.BODY_FAT_PCT: _first(record, "bodyFat"),
+                    c.BODY_WATER_PCT: _first(record, "bodyWater"),
+                    c.BMI: _first(record, "bmi"),
+                },
+            )
         )
-    )
+    return Normalized(daily=rows)
 
 
 # ── activities ──────────────────────────────────────────────────────────────────

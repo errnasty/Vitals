@@ -188,3 +188,60 @@ one skips an activity whose summary is already in bronze, which is right for JSO
 wrong here — every activity recorded before this feature existed has the summary and
 no recording, so sharing the skip would have meant the back catalogue was never
 downloaded, and nothing would have reported it.
+
+
+## The envelope problem
+
+Four endpoints produced nothing for months, and they failed the same way. Garmin's
+range endpoints do not return a list of days. They return a **summary envelope** with
+the days inside one of its fields:
+
+| Endpoint | The envelope | Where the days actually are |
+|---|---|---|
+| `hill_score` | `{startDate, endDate, maxScore, periodAvgScore, …}` | `hillScoreDTOList` |
+| `endurance_score` | `{avg, max, startDate, endDate, userProfilePK, …}` | `enduranceScoreDTO` or `groupMap` |
+| `body_composition` | `{startDate, endDate, totalAverage, …}` | `dateWeightList` |
+| `max_metrics` | a list of one record per day | each record's nested `generic` block |
+
+`split_dated` cannot unwrap these, and correctly does not try: it splits a response
+only when every item carries a date, and an envelope carries none at its top level.
+So bronze stores the envelope whole — which is right, bronze is verbatim — and
+unwrapping is the normalizer's job.
+
+Reading the envelope's own top-level fields finds nothing, every time, for every day.
+That is what `barren=15 seen=15` in the logs meant.
+
+**The dangerous near-miss is `endurance_score`.** Its envelope carries `avg`, which is
+a real number — the average across the whole requested range. Filing that under each
+day would have been worse than filing nothing, because the dashboard would have shown
+a plausible flat line and nothing would have looked wrong.
+
+### Sleep had two problems at once
+
+`sleep_daily` was barren on 60 of 60 payloads because the range endpoint and the
+per-day endpoint disagree about **both** the field names and the units:
+
+* The per-day endpoint nests the score under `sleepScores.overall.value`. The range
+  endpoint sends a flat `sleepScore`. Only the first was read, so every historical
+  night arrived scoreless — while recent nights, which come from the per-day endpoint,
+  looked fine. That is why the app appeared to have sleep data and did not.
+* Durations arrive as `deepTime`/`remTime`/`lightTime` rather than `deepSleepSeconds`,
+  and sometimes in milliseconds.
+
+The unit is *detected*, not guessed: no real night is 28,800,000 seconds and none is
+28.8, so the two readings are never ambiguous. A value implausible in both is
+**refused** rather than stored. A wrong duration is worse than a missing one — the
+missing one lowers coverage and says so, and the wrong one silently moves the sleep
+pillar.
+
+Where no total is sent, the stages are summed. That only ever applies when no total
+arrived: a derived total that disagreed with a reported one would be a second opinion
+nobody asked for.
+
+### Two endpoints that look broken and are not
+
+`race_predictions` (193 of 600 barren) and `daily_steps` (174 of 318) read exactly the
+keys their payloads carry. The barren ones are days before the watch existed or days
+it was not worn, where every field is null. `body_battery` is the same: it normalizes
+recent days correctly and is empty on history that was never recorded. Nothing to fix
+there, and "fix" would mean inventing zeros for days nobody wore a watch.

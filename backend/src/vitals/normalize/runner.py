@@ -78,9 +78,11 @@ class NormalizeResult:
         return self.daily + self.samples + self.sleep + self.activities
 
 
-# How many keys of an empty payload are worth naming. Enough to recognise the
-# response, short enough that a log line stays a log line.
-SHAPE_KEYS = 12
+# How many keys of an empty payload are worth naming. Raised from 12 after the
+# truncation hid the very key that mattered: `sleep_daily`'s nested block ran to
+# exactly twelve names and the thirteenth was the sleep duration nobody could find.
+# A log line that stops one key short of the answer is worse than a long one.
+SHAPE_KEYS = 28
 
 
 def _shape(payload: object, depth: int = 0) -> str:
@@ -97,12 +99,22 @@ def _shape(payload: object, depth: int = 0) -> str:
         more = "…" if len(payload) > SHAPE_KEYS else ""
         inner = ""
         # One level down for the wrapper shapes Garmin favours, where the useful
-        # names are never at the top.
+        # names are never at the top. Named keys first, then any nested container —
+        # the named list was written from the endpoints already known to wrap, and
+        # every endpoint that turned out to wrap under a *different* name
+        # (`hillScoreDTOList`, `dateWeightList`, `enduranceScoreDTO`) stayed
+        # undiagnosable until this looked at the rest.
         if depth == 0:
-            for key in ("values", "individualStats", "allMetrics", "dailyMetrics"):
-                if isinstance(payload.get(key), (dict, list)):
-                    inner = f" {key}=" + _shape(payload[key], depth + 1)
-                    break
+            preferred = ("values", "individualStats", "allMetrics", "dailyMetrics")
+            candidates = [k for k in preferred if isinstance(payload.get(k), dict | list)]
+            candidates += [
+                k
+                for k, v in payload.items()
+                if k not in preferred and isinstance(v, dict | list) and v
+            ]
+            if candidates:
+                key = candidates[0]
+                inner = f" {key}=" + _shape(payload[key], depth + 1)
         return "{" + ", ".join(keys) + more + "}" + inner
     if isinstance(payload, list):
         return f"[{len(payload)}]" + (_shape(payload[0], depth) if payload else "")
